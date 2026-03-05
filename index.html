@@ -3,42 +3,63 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tung Design v2.7.2 - Pro Spec Engine</title>
-    <!-- Tailwind CSS -->
+    <title>Tung Design v2.7.2 - 私人測試版</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- React & ReactDOM -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <!-- Babel for JSX -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap');
-        body { font-family: 'Noto Sans TC', sans-serif; }
-        .animate-spin { animation: spin 1s linear infinite; }
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        body { font-family: 'Noto Sans TC', sans-serif; -webkit-font-smoothing: antialiased; }
+        .shimmer {
+            background: linear-gradient(90deg, #10b981 0%, #34d399 50%, #10b981 100%);
+            background-size: 200% auto;
+            animation: shimmer 2s linear infinite;
+        }
+        @keyframes shimmer { to { background-position: 200% center; } }
+        .loading-ring {
+            border: 3px solid rgba(16, 185, 129, 0.2);
+            border-top: 3px solid #10b981;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
     </style>
 </head>
-<body>
-    <div id="root"></div>
+<body class="bg-[#F8FAFC]">
+    <div id="root">
+        <div style="display: flex; height: 100vh; width: 100%; align-items: center; justify-content: center;">
+            <div style="text-align: center;">
+                <div class="loading-ring" style="margin: 0 auto 16px;"></div>
+                <p style="font-size: 12px; color: #94a3b8; font-weight: bold; letter-spacing: 0.2em;">PRIVATE ENGINE LOADING...</p>
+            </div>
+        </div>
+    </div>
 
     <script type="text/babel">
         const { useState, useEffect } = React;
-        
-        // Lucide Icon Wrapper Component
+
+        /**
+         * ⚠️ 重要：已填入您的 Gemini API KEY
+         * 此檔案內含私密金鑰，請務必妥善保管
+         */
+        const API_KEY = "AIzaSyBxqxDVgHsObWcnOqJoJ2m1tEzJuFauRyA"; 
+
         const Icon = ({ name, size = 20, className = "" }) => {
             const [svg, setSvg] = useState("");
             useEffect(() => {
-                if (window.lucide) {
+                if (window.lucide && window.lucide.icons) {
                     const icon = window.lucide.icons[name];
                     if (icon) {
-                        const svgString = icon.toSvg({
-                            width: size,
-                            height: size,
-                            class: className,
-                            'stroke-width': 2
-                        });
+                        const svgString = icon.toSvg({ width: size, height: size, class: className, 'stroke-width': 2 });
                         setSvg(svgString);
                     }
                 }
@@ -48,317 +69,234 @@
 
         const App = () => {
             const [activeTab, setActiveTab] = useState('path1');
-            const [viewMode, setViewMode] = useState('clean');
             const [isGenerating, setIsGenerating] = useState(false);
-            const [isAdjusting, setIsAdjusting] = useState(false);
-            const [currentStep, setCurrentStep] = useState('idle');
+            const [generatedImage, setGeneratedImage] = useState(null);
+            const [errorMessage, setErrorMessage] = useState("");
             const [showSpecModal, setShowSpecModal] = useState(false);
-            const [colorCount, setColorCount] = useState(4);
-            const [showCustomModule, setShowCustomModule] = useState(false);
-            const [customModuleName, setCustomModuleName] = useState('');
-
-            // 模組數據結構
-            const [modules, setModules] = useState({
-                badge: { isCustom: false, name: '徽章/背章', types: ['平繡', '立體繡', '織嘜', '軟琺瑯', '硬琺瑯', '印刷滴膠'], shapes: ['圓形', '橢圓', '盾形', '正方形', '五角形', '異形'] },
-                woggle: { isCustom: false, name: '巾圈', types: ['皮革雷雕', '鋅合金鑄造', '皮革烙印', '木質噴繪', 'PVC 軟膠'], shapes: ['圓柱環型', '皮革平鋪式', '五邊形柱狀', '不規則 3D'] },
-                souvenir: { isCustom: false, name: '紀念品', types: ['雙面鑄造', '噴砂', '拉絲', '仿古電鍍'], shapes: ['挑戰幣', '鑰匙扣', '紀念章', '領帶夾'] }
-            });
-
-            const initialColors = ['#2D5A27', '#5D4037', '#FF9800', '#FFFFFF', '#000000', '#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#00FFFF', '#FF00FF', '#C0C0C0', '#808080', '#800000', '#808080', '#008000'];
 
             const [formData, setFormData] = useState({
-                path1: { activity: '', nature: '', idea: '', chineseText: '', englishText: '', designStyle: '' },
-                path2: { colors: initialColors },
-                path3: { refDesc: '', refUrl: '', fileName: '', hasRef: false },
-                path4: { module: 'badge', type: '硬琺瑯', shape: '圓形', customType: '', customShape: '' },
-                path5: { adjustment: '', craftAdjustment: '' }
+                activity: '',
+                designStyle: '現代簡約向量插畫',
+                idea: '',
+                module: 'badge',
+                type: '硬琺瑯',
+                colors: ['#1e293b', '#10b981', '#f59e0b', '#ffffff']
             });
 
-            const handleRandomColors = () => {
-                const randomHex = () => '#' + Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0').toUpperCase();
-                const newColors = Array.from({ length: 16 }, randomHex);
-                setFormData(prev => ({ ...prev, path2: { ...prev.path2, colors: newColors } }));
+            // 指數退避請求函數 (Exponential Backoff)
+            const fetchWithRetry = async (url, options, retries = 5) => {
+                for (let i = 0; i < retries; i++) {
+                    try {
+                        const response = await fetch(url, options);
+                        if (response.ok) return await response.json();
+                        if (response.status === 429) {
+                            const delay = Math.pow(2, i) * 1000;
+                            await new Promise(r => setTimeout(r, delay));
+                            continue;
+                        }
+                        const errData = await response.json();
+                        throw new Error(errData.error?.message || `HTTP ${response.status}`);
+                    } catch (err) {
+                        if (i === retries - 1) throw err;
+                    }
+                }
             };
 
-            const handleGenerate = () => {
+            const generateDesign = async () => {
+                if (!API_KEY) {
+                    setErrorMessage("未檢測到 API Key。");
+                    return;
+                }
+
                 setIsGenerating(true);
-                setTimeout(() => { 
-                    setIsGenerating(false); 
-                    setCurrentStep('generated'); 
-                }, 1200);
-            };
+                setErrorMessage("");
+                
+                try {
+                    // 1. 生成優化後的提示詞 (Gemini 2.5 Flash)
+                    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${API_KEY}`;
+                    const promptResponse = await fetchWithRetry(geminiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            contents: [{ parts: [{ text: `你是一位資深產品設計師。用戶想設計一個${formData.module}，活動是"${formData.activity}"，風格是${formData.designStyle}，核心元素包含：${formData.idea}。請為我生成一段細緻的英文繪圖提示詞 (Prompt)，背景必須純白，向量風格，方便後續生產。直接回傳提示詞即可。` }] }]
+                        })
+                    });
 
-            const handleDownloadHTML = () => {
-                const { activity, idea, chineseText, englishText, designStyle } = formData.path1;
-                const { module, type, shape, customType, customShape } = formData.path4;
-                const activeColors = formData.path2.colors.slice(0, colorCount);
-                const finalType = modules[module].isCustom ? customType : type;
-                const finalShape = modules[module].isCustom ? customShape : shape;
+                    const refinedPrompt = promptResponse.candidates?.[0]?.content?.parts?.[0]?.text || formData.idea;
 
-                const colorRows = activeColors.map((color, i) => `
-                    <div style="display: flex; align-items: center; gap: 20px; padding: 12px; border-bottom: 1px solid #eee;">
-                        <div style="width: 40px; height: 40px; border-radius: 4px; background-color: ${color}; border: 1px solid #ddd;"></div>
-                        <div style="font-family: monospace; font-size: 12px;">#${i + 1}: ${color}</div>
-                    </div>
-                `).join('');
+                    // 2. 呼叫 Imagen 4.0 生成圖片
+                    const imagenUrl = `https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key=${API_KEY}`;
+                    const imageResponse = await fetchWithRetry(imagenUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            instances: { prompt: refinedPrompt },
+                            parameters: { sampleCount: 1 }
+                        })
+                    });
 
-                const htmlContent = `<html><body style="font-family:sans-serif;padding:40px;background:#f8fafc;">
-                    <div style="background:white;padding:40px;border-radius:24px;max-width:600px;margin:auto;box-shadow:0 10px 30px rgba(0,0,0,0.05);">
-                        <h1 style="margin:0;font-style:italic;">SPEC: ${activity || 'Untitled'}</h1>
-                        <p style="color:#64748b;">${modules[module].name} / ${finalType} / ${finalShape}</p>
-                        <hr style="margin:20px 0;border:none;border-top:2px solid #f1f5f9;">
-                        <h3>設計理念與風格</h3><p>理念: ${idea}</p><p>風格: ${designStyle}</p>
-                        <p>中文文字: ${chineseText || '無'} | 英文文字: ${englishText || '無'}</p>
-                        <h3>色彩設定</h3>${colorRows}
-                    </div>
-                </body></html>`;
+                    if (imageResponse.predictions?.[0]?.bytesBase64Encoded) {
+                        setGeneratedImage(`data:image/png;base64,${imageResponse.predictions[0].bytesBase64Encoded}`);
+                    } else {
+                        throw new Error("Imagen 引擎繁忙或未回傳圖像，請稍後重試。");
+                    }
 
-                const blob = new Blob([htmlContent], { type: 'text/html' });
-                const url = URL.createObjectURL(blob);
-                const link = document.createElement('a');
-                link.href = url;
-                link.download = `Spec_${activity || 'Design'}.html`;
-                link.click();
+                } catch (error) {
+                    console.error(error);
+                    setErrorMessage(`錯誤：${error.message}`);
+                } finally {
+                    setIsGenerating(false);
+                }
             };
 
             return (
-                <div className="min-h-screen bg-[#F1F5F9] pb-20 font-sans">
-                    <header className="bg-slate-950 text-white sticky top-0 z-50 border-b-4 border-emerald-500 px-6 py-4 flex items-center justify-between shadow-xl">
+                <div className="min-h-screen pb-10">
+                    <header className="bg-slate-900 text-white px-6 py-4 sticky top-0 z-50 flex justify-between items-center shadow-xl border-b border-emerald-500/30">
                         <div className="flex items-center gap-3">
-                            <div className="bg-emerald-500 p-1.5 rounded-lg text-white">
-                                <Icon name="Shield" />
+                            <div className="bg-emerald-500 p-2 rounded-xl shimmer shadow-lg shadow-emerald-500/20">
+                                <Icon name="Zap" className="text-white" />
                             </div>
                             <div>
-                                <h1 className="text-lg font-black italic uppercase tracking-tighter leading-none text-white">Tung Design v2.7.2</h1>
-                                <p className="text-[8px] text-emerald-400 font-bold tracking-[0.3em] mt-1">PRO SPEC ENGINE</p>
+                                <h1 className="text-lg font-black italic uppercase tracking-tighter">Tung Private</h1>
+                                <p className="text-[8px] text-emerald-400 font-bold tracking-[0.4em]">INTERNAL SECURE v2.7.2</p>
                             </div>
                         </div>
+                        {errorMessage && (
+                            <div className="bg-red-500/20 text-red-400 text-[10px] px-4 py-2 rounded-full border border-red-500/30 animate-pulse">
+                                {errorMessage}
+                            </div>
+                        )}
                     </header>
 
-                    <main className="max-w-7xl mx-auto p-4 lg:p-8 grid grid-cols-1 lg:grid-cols-12 gap-6">
-                        {/* 控制面板 */}
-                        <div className="lg:col-span-5 space-y-4">
-                            <div className="bg-white rounded-[2rem] shadow-xl border border-slate-200 overflow-hidden">
-                                <div className="flex bg-slate-50 p-2 gap-1 border-b">
-                                    {['理念', '色彩', '參考', '載體', '微調'].map((label, idx) => (
-                                        <button
+                    <main className="max-w-7xl mx-auto p-6 lg:p-10 grid grid-cols-1 lg:grid-cols-12 gap-10">
+                        <div className="lg:col-span-5 space-y-6">
+                            <div className="glass-panel rounded-[2rem] shadow-sm border border-slate-200 overflow-hidden">
+                                <div className="flex bg-slate-50 p-2 border-b">
+                                    {['內容設定', '顏色', '載體'].map((label, idx) => (
+                                        <button 
                                             key={idx}
-                                            onClick={() => setActiveTab(`path${idx + 1}`)}
-                                            className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase transition-all ${activeTab === `path${idx + 1}` ? 'bg-white shadow text-emerald-600' : 'text-slate-400 hover:text-slate-600'}`}
+                                            onClick={() => setActiveTab(`path${idx+1}`)}
+                                            className={`flex-1 py-3 rounded-2xl text-xs font-black transition-all ${activeTab === `path${idx+1}` ? 'bg-white shadow-md text-emerald-600' : 'text-slate-400'}`}
                                         >
                                             {label}
                                         </button>
                                     ))}
                                 </div>
-
-                                <div className="p-6 min-h-[500px]">
+                                
+                                <div className="p-8 min-h-[350px]">
                                     {activeTab === 'path1' && (
-                                        <div className="space-y-4">
-                                            <div className="grid grid-cols-2 gap-3">
-                                                <div className="space-y-1">
-                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1"><Icon name="Hash" size={10} />活動名稱</label>
-                                                    <input className="w-full p-3 bg-slate-50 rounded-xl text-xs outline-none focus:ring-1 ring-emerald-500" value={formData.path1.activity} onChange={e => setFormData({ ...formData, path1: { ...formData.path1, activity: e.target.value } })} />
-                                                </div>
-                                                <div className="space-y-1">
-                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1"><Icon name="Compass" size={10} />設計風格</label>
-                                                    <input className="w-full p-3 bg-slate-50 rounded-xl text-xs outline-none focus:ring-1 ring-emerald-500" placeholder="如：動漫風、古典風" value={formData.path1.designStyle} onChange={e => setFormData({ ...formData, path1: { ...formData.path1, designStyle: e.target.value } })} />
-                                                </div>
+                                        <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2">
+                                            <div className="space-y-1">
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">活動名稱</label>
+                                                <input className="w-full p-4 bg-slate-50 rounded-2xl text-sm border-2 border-transparent focus:border-emerald-500/20 outline-none" value={formData.activity} onChange={e => setFormData({...formData, activity: e.target.value})} placeholder="例如：第15屆童軍大露營" />
                                             </div>
                                             <div className="space-y-1">
-                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1"><Icon name="PenTool" size={10} />設計理念</label>
-                                                <textarea className="w-full p-4 bg-slate-50 rounded-2xl h-24 text-xs outline-none resize-none focus:ring-1 ring-emerald-500" value={formData.path1.idea} onChange={e => setFormData({ ...formData, path1: { ...formData.path1, idea: e.target.value } })} />
-                                            </div>
-                                            <div className="grid grid-cols-2 gap-3">
-                                                <div className="space-y-1">
-                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1"><Icon name="Languages" size={10} />中文文字</label>
-                                                    <input className="w-full p-3 bg-slate-50 rounded-xl text-xs outline-none focus:ring-1 ring-emerald-500" value={formData.path1.chineseText} onChange={e => setFormData({ ...formData, path1: { ...formData.path1, chineseText: e.target.value } })} />
-                                                </div>
-                                                <div className="space-y-1">
-                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1"><Icon name="Type" size={10} />英文文字</label>
-                                                    <input className="w-full p-3 bg-slate-50 rounded-xl text-xs outline-none focus:ring-1 ring-emerald-500" value={formData.path1.englishText} onChange={e => setFormData({ ...formData, path1: { ...formData.path1, englishText: e.target.value } })} />
-                                                </div>
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">理念描述</label>
+                                                <textarea className="w-full p-4 bg-slate-50 rounded-2xl text-sm h-32 border-2 border-transparent focus:border-emerald-500/20 outline-none resize-none" value={formData.idea} onChange={e => setFormData({...formData, idea: e.target.value})} placeholder="描述想要出現的元素（如：營火、百合花、山脈...）" />
                                             </div>
                                         </div>
                                     )}
 
                                     {activeTab === 'path2' && (
-                                        <div className="space-y-6">
-                                            <div className="flex justify-between items-center">
-                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest italic">色彩管理系統</label>
-                                                <button onClick={handleRandomColors} className="text-[10px] font-black text-emerald-600 flex items-center gap-1 hover:bg-emerald-50 px-2 py-1 rounded-lg transition-colors">
-                                                    <Icon name="RefreshCw" size={12} /> 隨機色彩
-                                                </button>
-                                            </div>
-                                            <input type="range" min="1" max="16" value={colorCount} onChange={(e) => setColorCount(parseInt(e.target.value))} className="w-full accent-emerald-500" />
-                                            <div className="grid grid-cols-4 gap-2">
-                                                {formData.path2.colors.slice(0, colorCount).map((color, idx) => (
-                                                    <input key={idx} type="color" value={color} onChange={(e) => {
-                                                        const newCols = [...formData.path2.colors];
-                                                        newCols[idx] = e.target.value.toUpperCase();
-                                                        setFormData({ ...formData, path2: { ...formData.path2, colors: newCols } });
-                                                    }} className="w-full h-10 rounded-lg cursor-pointer border-none shadow-sm" />
+                                        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2">
+                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">調色盤設定</p>
+                                            <div className="grid grid-cols-4 gap-4">
+                                                {formData.colors.map((c, i) => (
+                                                    <input key={i} type="color" value={c} onChange={e => {
+                                                        const newCols = [...formData.colors];
+                                                        newCols[i] = e.target.value;
+                                                        setFormData({...formData, colors: newCols});
+                                                    }} className="w-full h-12 rounded-xl cursor-pointer hover:scale-105 transition-transform" />
                                                 ))}
                                             </div>
                                         </div>
                                     )}
 
                                     {activeTab === 'path3' && (
-                                        <div className="space-y-6">
-                                            <div className="flex items-center gap-2 mb-2">
-                                                <input type="checkbox" id="hasRef" checked={formData.path3.hasRef} onChange={e => setFormData({ ...formData, path3: { ...formData.path3, hasRef: e.target.checked } })} className="w-4 h-4 accent-emerald-500" />
-                                                <label htmlFor="hasRef" className="text-xs font-bold text-slate-600 cursor-pointer">啟用參考資料頁面</label>
-                                            </div>
-                                            <div className={`space-y-4 transition-all ${formData.path3.hasRef ? 'opacity-100' : 'opacity-30 pointer-events-none'}`}>
-                                                <textarea className="w-full p-3 bg-slate-50 rounded-xl text-xs h-24 outline-none resize-none border" placeholder="描述您的參考底圖細節..." value={formData.path3.refDesc} onChange={e => setFormData({ ...formData, path3: { ...formData.path3, refDesc: e.target.value } })} />
-                                                <div className="p-6 border-2 border-dashed border-slate-200 rounded-2xl text-center hover:bg-slate-50 cursor-pointer transition-colors text-slate-300">
-                                                    <Icon name="UploadCloud" size={24} className="mx-auto mb-2" />
-                                                    <p className="text-[10px] font-bold text-slate-400 uppercase">上傳參考底圖檔案</p>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {activeTab === 'path4' && (
-                                        <div className="space-y-6">
-                                            <div className="flex justify-between items-center">
-                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">載體選擇</label>
-                                                <button onClick={() => setShowCustomModule(!showCustomModule)} className="text-[9px] font-black text-emerald-600 flex items-center gap-1">
-                                                    <Icon name="Plus" size={10} /> 自訂類別
+                                        <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-bottom-2">
+                                            {['badge', 'woggle', 'souvenir'].map(m => (
+                                                <button key={m} onClick={() => setFormData({...formData, module: m})} className={`p-6 rounded-3xl border-2 transition-all flex flex-col items-center gap-3 ${formData.module === m ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-slate-50 text-slate-300'}`}>
+                                                    <Icon name={m === 'badge' ? 'Shield' : m === 'woggle' ? 'Infinity' : 'Award'} size={24} />
+                                                    <span className="text-[10px] font-black uppercase tracking-widest">{m === 'badge' ? '徽章' : m === 'woggle' ? '巾圈' : '紀念品'}</span>
                                                 </button>
-                                            </div>
-                                            {showCustomModule && (
-                                                <div className="bg-emerald-50 p-2 rounded-xl flex gap-2">
-                                                    <input className="flex-1 p-2 bg-white rounded-lg text-xs" placeholder="新種類名稱..." value={customModuleName} onChange={e => setCustomModuleName(e.target.value)} />
-                                                    <button onClick={() => {
-                                                        const id = `custom_${Date.now()}`;
-                                                        setModules({ ...modules, [id]: { isCustom: true, name: customModuleName, types: [], shapes: [] } });
-                                                        setFormData({ ...formData, path4: { ...formData.path4, module: id } });
-                                                        setCustomModuleName(''); setShowCustomModule(false);
-                                                    }} className="bg-emerald-600 text-white px-3 rounded-lg text-xs font-bold">新增</button>
-                                                </div>
-                                            )}
-                                            <div className="grid grid-cols-3 gap-2">
-                                                {Object.keys(modules).map(m => (
-                                                    <button key={m} onClick={() => setFormData({ ...formData, path4: { ...formData.path4, module: m, type: modules[m].types[0] || '', shape: modules[m].shapes[0] || '' } })} className={`py-4 rounded-xl text-[10px] font-black border-2 transition-all ${formData.path4.module === m ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-slate-50 text-slate-300'}`}>
-                                                        {modules[m].name}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                            <div className="pt-4 border-t border-slate-100">
-                                                {!modules[formData.path4.module].isCustom ? (
-                                                    <div className="flex gap-2">
-                                                        <select className="flex-1 p-3 bg-slate-50 rounded-xl text-xs font-bold outline-none" value={formData.path4.type} onChange={e => setFormData({ ...formData, path4: { ...formData.path4, type: e.target.value } })}>
-                                                            {modules[formData.path4.module].types.map(t => <option key={t}>{t}</option>)}
-                                                        </select>
-                                                        <select className="flex-1 p-3 bg-slate-50 rounded-xl text-xs font-bold outline-none" value={formData.path4.shape} onChange={e => setFormData({ ...formData, path4: { ...formData.path4, shape: e.target.value } })}>
-                                                            {modules[formData.path4.module].shapes.map(s => <option key={s}>{s}</option>)}
-                                                        </select>
-                                                    </div>
-                                                ) : (
-                                                    <div className="space-y-2">
-                                                        <input className="w-full p-3 bg-emerald-50/50 rounded-xl text-xs font-bold border border-emerald-100" placeholder="請手動輸入工藝種類" value={formData.path4.customType} onChange={e => setFormData({ ...formData, path4: { ...formData.path4, customType: e.target.value } })} />
-                                                        <input className="w-full p-3 bg-emerald-50/50 rounded-xl text-xs font-bold border border-emerald-100" placeholder="請手動輸入外觀形狀" value={formData.path4.customShape} onChange={e => setFormData({ ...formData, path4: { ...formData.path4, customShape: e.target.value } })} />
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {activeTab === 'path5' && (
-                                        <div className="space-y-4">
-                                            <div className="p-4 bg-slate-50 rounded-2xl space-y-3 border">
-                                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest italic block">增量微調 (Incremental Update)</label>
-                                                <textarea className="w-full p-3 bg-white rounded-xl text-xs h-24 resize-none border" placeholder="輸入具體的修正指令..." value={formData.path5.adjustment} onChange={e => setFormData({ ...formData, path5: { ...formData.path5, adjustment: e.target.value } })} />
-                                                <button onClick={() => { setIsAdjusting(true); setTimeout(() => setIsAdjusting(false), 1000); }} disabled={currentStep === 'idle'} className="w-full py-3 bg-blue-600 text-white rounded-xl font-black text-[10px] uppercase flex items-center justify-center gap-2 hover:bg-blue-700 disabled:opacity-30 shadow-lg shadow-blue-600/20 transition-all">
-                                                    {isAdjusting ? <Icon name="Loader2" size={14} className="animate-spin" /> : <Icon name="Sliders" size={14} />}
-                                                    更新當前圖稿
-                                                </button>
-                                            </div>
+                                            ))}
                                         </div>
                                     )}
                                 </div>
                             </div>
 
-                            <button onClick={handleGenerate} disabled={isGenerating || !formData.path1.idea} className="w-full py-5 bg-slate-950 text-white rounded-3xl font-black text-lg shadow-2xl hover:bg-black transition-all flex items-center justify-center gap-3 disabled:opacity-30 active:scale-95">
-                                {isGenerating ? <Icon name="Loader2" size={24} className="animate-spin" /> : <Icon name="Wand2" size={24} />}
-                                {currentStep === 'generated' ? '重新生成基礎底圖' : '生成專業設計底圖'}
+                            <button 
+                                onClick={generateDesign} 
+                                disabled={isGenerating || !formData.idea}
+                                className="w-full py-6 bg-slate-900 text-white rounded-[2rem] font-black text-lg shadow-2xl hover:bg-black active:scale-[0.98] transition-all flex items-center justify-center gap-4 disabled:opacity-40"
+                            >
+                                {isGenerating ? <div className="loading-ring"></div> : <Icon name="Sparkles" />}
+                                {isGenerating ? '正在繪製設計圖...' : '立即生成測試'}
                             </button>
                         </div>
 
-                        {/* 預覽面板 */}
-                        <div className="lg:col-span-7 space-y-4">
-                            <div className="bg-slate-900 rounded-[2.5rem] shadow-2xl border-[6px] border-white overflow-hidden relative min-h-[550px] flex flex-col">
-                                <div className="p-6 bg-slate-800/50 flex items-center justify-between border-b border-white/5">
-                                    <div className="flex bg-slate-950 p-1 rounded-full">
-                                        <button onClick={() => setViewMode('clean')} className={`px-6 py-2 rounded-full text-[10px] font-black transition-all ${viewMode === 'clean' ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30' : 'text-slate-500 hover:text-slate-300'}`}>向量底圖</button>
-                                        <button onClick={() => setViewMode('craft')} className={`px-6 py-2 rounded-full text-[10px] font-black transition-all ${viewMode === 'craft' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30' : 'text-slate-500 hover:text-slate-300'}`}>成品模擬</button>
-                                    </div>
-                                    {currentStep === 'generated' && (
-                                        <button onClick={() => setShowSpecModal(true)} className="px-5 py-2 bg-white text-slate-950 rounded-full font-black text-[10px] uppercase hover:bg-emerald-500 hover:text-white transition-all shadow-xl">
-                                            產出規格書
-                                        </button>
+                        <div className="lg:col-span-7">
+                            <div className="bg-slate-900 rounded-[3rem] border-[10px] border-white shadow-2xl min-h-[600px] flex flex-col relative overflow-hidden group">
+                                <div className="flex-1 flex items-center justify-center p-12">
+                                    {isGenerating ? (
+                                        <div className="text-center space-y-4">
+                                            <div className="loading-ring border-t-emerald-400 w-12 h-12 mx-auto"></div>
+                                            <p className="text-emerald-400 text-xs font-black uppercase tracking-widest animate-pulse">Processing AI Vision</p>
+                                        </div>
+                                    ) : generatedImage ? (
+                                        <div className="animate-in zoom-in-95 duration-500 bg-white p-4 rounded-3xl shadow-2xl">
+                                            <img src={generatedImage} className="max-w-full max-h-[400px] rounded-xl" alt="AI Generated Result" />
+                                        </div>
+                                    ) : (
+                                        <div className="text-center opacity-20">
+                                            <Icon name="Shapes" size={100} className="text-white mx-auto mb-6" />
+                                            <p className="text-white text-xs font-black uppercase tracking-[0.4em]">測試預覽區</p>
+                                        </div>
                                     )}
                                 </div>
 
-                                <div className="flex-1 flex flex-col items-center justify-center p-8 text-center relative">
-                                    {currentStep === 'idle' ? (
-                                        <div className="opacity-20 flex flex-col items-center">
-                                            <Icon name="Globe" size={60} className="text-white mb-4 animate-pulse" />
-                                            <p className="text-white text-[10px] font-black uppercase tracking-[0.4em]">Engine Standby...</p>
+                                {generatedImage && (
+                                    <div className="p-8 bg-white/5 border-t border-white/10 flex justify-between items-center">
+                                        <div className="space-y-1">
+                                            <h3 className="text-white text-xl font-black italic uppercase">{formData.activity || 'Test Project'}</h3>
+                                            <p className="text-[8px] text-emerald-400 font-bold uppercase tracking-widest">Imagen 4.0 Stable Output</p>
                                         </div>
-                                    ) : (
-                                        <div className="animate-in zoom-in-95 duration-500">
-                                            <div className={`w-64 h-64 rounded-full flex items-center justify-center shadow-[0_0_50px_rgba(0,0,0,0.5)] mx-auto transition-all duration-700 ${viewMode === 'clean' ? 'bg-emerald-500' : 'bg-blue-600 rotate-12'}`}>
-                                                <Icon name="Shield" size={120} className="text-white drop-shadow-2xl" />
-                                            </div>
-                                            <h3 className="text-white mt-10 text-4xl font-black italic uppercase italic drop-shadow-md tracking-tight leading-none">{formData.path1.activity || 'New Design'}</h3>
-                                            <div className="flex gap-2 justify-center mt-4">
-                                                <span className="text-[10px] text-white/50 bg-white/10 px-4 py-1 rounded-full border border-white/10 font-black uppercase tracking-widest">{modules[formData.path4.module].name}</span>
-                                                <span className="text-[10px] text-white/50 bg-white/10 px-4 py-1 rounded-full border border-white/10 font-black uppercase tracking-widest">
-                                                    {modules[formData.path4.module].isCustom ? (formData.path4.customType || '自定義工藝') : formData.path4.type}
-                                                </span>
-                                            </div>
-                                            {formData.path1.designStyle && (
-                                                <p className="text-emerald-400 text-[10px] mt-6 font-bold uppercase tracking-[0.2em] italic">Style: {formData.path1.designStyle}</p>
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
+                                        <button onClick={() => setShowSpecModal(true)} className="px-6 py-3 bg-emerald-500 text-white rounded-xl font-black text-[10px] uppercase shadow-lg shadow-emerald-500/20 hover:bg-emerald-400 transition-all">
+                                            查看生產規格
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </main>
 
-                    {/* 規格書彈窗 */}
                     {showSpecModal && (
-                        <div className="fixed inset-0 z-[100] bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4">
-                            <div className="bg-white rounded-[2.5rem] w-full max-w-lg p-10 space-y-6 shadow-[0_0_100px_rgba(16,185,129,0.3)] relative animate-in zoom-in-95">
-                                <button onClick={() => setShowSpecModal(false)} className="absolute top-8 right-8 p-2 hover:bg-slate-100 rounded-full transition-colors"><Icon name="X" /></button>
-                                <div>
-                                    <h2 className="text-3xl font-black italic uppercase tracking-tighter text-slate-900">Master Spec</h2>
-                                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Final Design Parameters</p>
-                                </div>
-                                <div className="bg-slate-50 p-6 rounded-[2rem] space-y-5 border">
-                                    <div className="grid grid-cols-2 gap-6">
-                                        <div className="space-y-1">
-                                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">項目與類別</p>
-                                            <p className="text-sm font-black text-slate-800">{formData.path1.activity || '未命名'} / {modules[formData.path4.module].name}</p>
-                                        </div>
-                                        <div className="space-y-1">
-                                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">指定設計風格</p>
-                                            <p className="text-sm font-black italic text-emerald-600">{formData.path1.designStyle || '預設通用'}</p>
-                                        </div>
-                                    </div>
-                                    <div className="space-y-2 pt-4 border-t border-slate-200">
-                                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">版面顯示文字</p>
-                                        <div className="flex flex-col gap-1">
-                                            <div className="flex justify-between text-[11px] font-bold text-slate-700"><span>中文:</span> <span className="text-slate-500">{formData.path1.chineseText || '無'}</span></div>
-                                            <div className="flex justify-between text-[11px] font-bold text-slate-700"><span>英文:</span> <span className="text-slate-500">{formData.path1.englishText || '無'}</span></div>
-                                        </div>
-                                    </div>
-                                </div>
-                                <button onClick={handleDownloadHTML} className="w-full py-5 bg-emerald-600 text-white rounded-full font-black uppercase tracking-[0.2em] flex items-center justify-center gap-3 hover:bg-emerald-700 transition-all shadow-xl shadow-emerald-600/20 active:scale-95">
-                                    <Icon name="Download" size={20} /> 下載正式 HTML 規格書
+                        <div className="fixed inset-0 z-[100] bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-6">
+                            <div className="bg-white rounded-[2.5rem] w-full max-w-lg p-10 relative animate-in zoom-in-95 duration-300">
+                                <button onClick={() => setShowSpecModal(false)} className="absolute top-8 right-8 p-2 hover:bg-slate-100 rounded-full transition-colors">
+                                    <Icon name="X" />
                                 </button>
+                                <h2 className="text-2xl font-black italic uppercase mb-8">Specification Card</h2>
+                                <div className="space-y-6 bg-slate-50 p-6 rounded-3xl border border-slate-100">
+                                    <div className="grid grid-cols-2 gap-6">
+                                        <div>
+                                            <label className="text-[9px] font-black text-slate-400 uppercase block mb-1">載體模組</label>
+                                            <p className="font-bold text-slate-900 text-sm">{formData.module}</p>
+                                        </div>
+                                        <div>
+                                            <label className="text-[9px] font-black text-slate-400 uppercase block mb-1">生產工藝</label>
+                                            <p className="font-bold text-emerald-600 text-sm">{formData.type}</p>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="text-[9px] font-black text-slate-400 uppercase block mb-2">色標分配</label>
+                                        <div className="flex gap-2">
+                                            {formData.colors.map((c, i) => (
+                                                <div key={i} className="w-8 h-8 rounded-lg shadow-inner" style={{backgroundColor: c}}></div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     )}
