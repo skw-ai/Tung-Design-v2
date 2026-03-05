@@ -1,482 +1,357 @@
-import React, { useState, useEffect } from 'react';
-import {
-  Shield, Palette, Settings, Download, Copy,
-  CheckCircle2, PenTool, Zap, Box,
-  FileText, Plus, Minus, RefreshCw, Image as ImageIcon,
-  Paperclip, Check, Wand2, RotateCcw, Sparkles, Loader2,
-  FileDown, Layers, MousePointer2, X, Info, ExternalLink,
-  ChevronRight, Hash, UploadCloud, Link2, Undo2, Compass, Type,
-  AlertCircle, Sliders, Layout, Globe, Languages, Type as TypeIcon
-} from 'lucide-react';
-
-const App = () => {
-  // --- 狀態管理 ---
-  const [activeTab, setActiveTab] = useState('path1');
-  const [viewMode, setViewMode] = useState('clean');
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [isAdjusting, setIsAdjusting] = useState(false);
-  const [currentStep, setCurrentStep] = useState('idle');
-  const [showSpecModal, setShowSpecModal] = useState(false);
-  const [colorCount, setColorCount] = useState(4);
-  const [showCustomModule, setShowCustomModule] = useState(false);
-  const [customModuleName, setCustomModuleName] = useState('');
-
-  // --- 初始模組數據 ---
-  const [modules, setModules] = useState({
-    badge: {
-      isCustom: false,
-      name: '徽章/背章',
-      types: ['平繡', '立體繡', '織嘜', '軟琺瑯', '硬琺瑯', '印刷滴膠'],
-      shapes: ['圓形', '橢圓', '盾形', '正方形', '五角形', '異形']
-    },
-    woggle: {
-      isCustom: false,
-      name: '巾圈',
-      types: ['皮革雷雕', '鋅合金鑄造', '皮革烙印', '木質噴繪', 'PVC 軟膠'],
-      shapes: ['圓柱環型', '皮革平鋪式', '五邊形柱狀', '不規則 3D']
-    },
-    souvenir: {
-      isCustom: false,
-      name: '紀念品',
-      types: ['雙面鑄造', '噴砂', '拉絲', '仿古電鍍'],
-      shapes: ['挑戰幣', '鑰匙扣', '紀念章', '領帶夾']
-    }
-  });
-
-  const initialColors = Array.from({ length: 16 }, (_, i) => 
-    ['#2D5A27', '#5D4037', '#FF9800', '#FFFFFF', '#000000', '#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#00FFFF', '#FF00FF', '#C0C0C0', '#808080', '#800000', '#808000', '#008000'][i]
-  );
-
-  const [formData, setFormData] = useState({
-    path1: { activity: '', nature: '', idea: '', chineseText: '', englishText: '', designStyle: '' },
-    path2: { colors: initialColors },
-    path3: { refDesc: '', refUrl: '', fileName: '', hasRef: false },
-    path4: { module: 'badge', type: '硬琺瑯', shape: '圓形', customType: '', customShape: '' },
-    path5: { adjustment: '', craftAdjustment: '' }
-  });
-
-  // --- 核心操作 ---
-  const handleAddCustomModule = () => {
-    if (!customModuleName.trim()) return;
-    const newId = `custom_${Date.now()}`;
-    setModules(prev => ({
-      ...prev,
-      [newId]: {
-        isCustom: true,
-        name: customModuleName,
-        types: [],
-        shapes: []
-      }
-    }));
-    setFormData(prev => ({
-      ...prev,
-      path4: { ...prev.path4, module: newId, type: '', shape: '', customType: '', customShape: '' }
-    }));
-    setCustomModuleName('');
-    setShowCustomModule(false);
-  };
-
-  const handleRandomColors = () => {
-    const randomHex = () => '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0').toUpperCase();
-    const newColors = Array.from({ length: 16 }, randomHex);
-    setFormData(prev => ({ ...prev, path2: { ...prev.path2, colors: newColors } }));
-  };
-
-  const hexToRgb = (hex) => {
-    const r = parseInt(hex.slice(1, 3), 16) || 0;
-    const g = parseInt(hex.slice(3, 5), 16) || 0;
-    const b = parseInt(hex.slice(5, 7), 16) || 0;
-    return `${r}, ${g}, ${b}`;
-  };
-
-  const hexToCmyk = (hex) => {
-    let r = parseInt(hex.slice(1, 3), 16) / 255;
-    let g = parseInt(hex.slice(3, 5), 16) / 255;
-    let b = parseInt(hex.slice(5, 7), 16) / 255;
-    let k = 1 - Math.max(r, g, b);
-    let c = (1 - r - k) / (1 - k) || 0;
-    let m = (1 - g - k) / (1 - k) || 0;
-    let y = (1 - b - k) / (1 - k) || 0;
-    if (k === 1) return "0, 0, 0, 100";
-    return `${Math.round(c * 100)}, ${Math.round(m * 100)}, ${Math.round(y * 100)}, ${Math.round(k * 100)}`;
-  };
-
-  const handleColorChange = (index, newHex) => {
-    const updatedColors = [...formData.path2.colors];
-    updatedColors[index] = newHex.toUpperCase();
-    setFormData(prev => ({ ...prev, path2: { ...prev.path2, colors: updatedColors } }));
-  };
-
-  const handleGenerate = () => {
-    setIsGenerating(true);
-    setTimeout(() => {
-      setIsGenerating(false);
-      setCurrentStep('generated');
-    }, 1200);
-  };
-
-  const handleAdjustment = () => {
-    if (currentStep === 'idle') return;
-    setIsAdjusting(true);
-    setTimeout(() => {
-      setIsAdjusting(false);
-    }, 1000);
-  };
-
-  const handleDownloadHTML = () => {
-    const { activity, idea, chineseText, englishText, designStyle } = formData.path1;
-    const { module, type, shape, customType, customShape } = formData.path4;
-    const { adjustment, craftAdjustment } = formData.path5;
-    const activeColors = formData.path2.colors.slice(0, colorCount);
-    
-    const finalType = modules[module].isCustom ? customType : type;
-    const finalShape = modules[module].isCustom ? customShape : shape;
-
-    const colorRows = activeColors.map((color, i) => `
-      <div style="display: flex; align-items: center; gap: 20px; padding: 12px; border-bottom: 1px solid #eee;">
-        <div style="width: 50px; height: 50px; border-radius: 6px; background-color: ${color}; border: 1px solid #ddd; flex-shrink: 0;"></div>
-        <div style="flex: 1; display: grid; grid-template-columns: 80px 100px 1fr; font-family: monospace; font-size: 12px; align-items: center;">
-          <div style="font-weight: bold;">#${i + 1}</div>
-          <div>${color}</div>
-          <div style="color: #64748b;">RGB: ${hexToRgb(color)} | CMYK: ${hexToCmyk(color)}</div>
-        </div>
-      </div>
-    `).join('');
-
-    const htmlContent = `
 <!DOCTYPE html>
-<html>
+<html lang="zh-TW">
 <head>
-  <meta charset="UTF-8">
-  <title>Spec - ${activity || 'Design'}</title>
-  <style>
-    body { font-family: -apple-system, sans-serif; color: #1e293b; line-height: 1.5; padding: 30px; background: #f1f5f9; }
-    .card { background: white; border-radius: 24px; padding: 40px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); max-width: 800px; margin: 0 auto; }
-    .header { border-bottom: 2px solid #f1f5f9; padding-bottom: 20px; margin-bottom: 30px; }
-    h1 { margin: 0; font-size: 28px; font-weight: 900; color: #0f172a; text-transform: uppercase; font-style: italic; }
-    .section-title { font-size: 11px; font-weight: 900; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; margin: 25px 0 10px 0; display: block; }
-    .info-box { background: #f8fafc; padding: 20px; border-radius: 16px; font-size: 14px; margin-bottom: 10px; }
-    .color-list { border: 1px solid #eee; border-radius: 12px; overflow: hidden; }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tung Design v2.7.2 - Professional Spec Engine</title>
+    <!-- 引入 Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 React 核心 -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- 引入 Babel 用於解析 JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- 引入 Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        input[type="range"] { height: 6px; -webkit-appearance: none; background: #e2e8f0; border-radius: 5px; }
+        input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; background: #10b981; border-radius: 50%; cursor: pointer; }
+    </style>
 </head>
-<body>
-  <div class="card">
-    <div class="header"><h1>${activity || '未命名項目'}</h1><p>${modules[module].name} / ${finalType || '未指定工藝'} / ${finalShape || '未指定形狀'}</p></div>
-    <span class="section-title">Design Concept & Text</span>
-    <div class="info-box">
-      <strong>設計理念:</strong> ${idea}<br>
-      <strong>設計風格:</strong> ${designStyle || '未指定'}<br>
-      <strong>中文文字:</strong> ${chineseText || '無'}<br>
-      <strong>英文文字:</strong> ${englishText || '無'}
-    </div>
-    <span class="section-title">Adjustments</span><div class="info-box">向量：${adjustment || '無'} | 工藝：${craftAdjustment || '無'}</div>
-    <span class="section-title">Colors</span><div class="color-list">${colorRows}</div>
-  </div>
-</body>
-</html>`;
+<body class="bg-[#F1F5F9]">
+    <div id="root"></div>
 
-    const blob = new Blob([htmlContent], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `Spec_${activity}.html`;
-    link.click();
-  };
+    <script type="text/babel">
+        const { useState, useEffect } = React;
 
-  return (
-    <div className="min-h-screen bg-[#F1F5F9] text-slate-900 font-sans">
-      <header className="bg-slate-950 text-white sticky top-0 z-50 border-b-4 border-emerald-500 shadow-xl px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="bg-emerald-500 p-1.5 rounded-lg"><Shield size={20}/></div>
-          <div>
-            <h1 className="text-lg font-black italic uppercase tracking-tighter">Tung Design v2.7.2</h1>
-            <p className="text-[8px] text-emerald-400 font-bold tracking-[0.3em]">PRO SPEC ENGINE</p>
-          </div>
-        </div>
-      </header>
+        // 封裝 Lucide Icon 組件，確保在單一 HTML 中正常運作
+        const Icon = ({ name, size = 20, className = "" }) => {
+            const LucideIcon = lucide[name];
+            return LucideIcon ? <LucideIcon size={size} className={className} /> : null;
+        };
 
-      <main className="max-w-7xl mx-auto p-4 lg:p-8 grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* 左側輸入區 */}
-        <div className="lg:col-span-5 space-y-4">
-          <div className="bg-white rounded-[2rem] shadow-xl border border-slate-200 overflow-hidden">
-            <div className="flex bg-slate-50 p-2 gap-1 border-b">
-              {['path1', 'path2', 'path3', 'path4', 'path5'].map((id, idx) => (
-                <button
-                  key={id}
-                  onClick={() => setActiveTab(id)}
-                  className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase transition-all ${activeTab === id ? 'bg-white shadow text-emerald-600' : 'text-slate-400 hover:text-slate-600'}`}
-                >
-                  {['理念', '色彩', '參考', '載體', '微調'][idx]}
-                </button>
-              ))}
-            </div>
+        const App = () => {
+            const [activeTab, setActiveTab] = useState('path1');
+            const [viewMode, setViewMode] = useState('clean');
+            const [isGenerating, setIsGenerating] = useState(false);
+            const [isAdjusting, setIsAdjusting] = useState(false);
+            const [currentStep, setCurrentStep] = useState('idle');
+            const [showSpecModal, setShowSpecModal] = useState(false);
+            const [colorCount, setColorCount] = useState(4);
+            const [showCustomModule, setShowCustomModule] = useState(false);
+            const [customModuleName, setCustomModuleName] = useState('');
 
-            <div className="p-6 min-h-[500px]">
-              {activeTab === 'path1' && (
-                <div className="space-y-4 animate-in fade-in duration-300">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1"><Hash size={10}/>活動名稱</label>
-                      <input className="w-full p-3 bg-slate-50 rounded-xl text-xs outline-none" value={formData.path1.activity} onChange={e => setFormData({...formData, path1: {...formData.path1, activity: e.target.value}})} />
+            // 模組數據結構
+            const [modules, setModules] = useState({
+                badge: { isCustom: false, name: '徽章/背章', types: ['平繡', '立體繡', '織嘜', '軟琺瑯', '硬琺瑯', '印刷滴膠'], shapes: ['圓形', '橢圓', '盾形', '正方形', '五角形', '異形'] },
+                woggle: { isCustom: false, name: '巾圈', types: ['皮革雷雕', '鋅合金鑄造', '皮革烙印', '木質噴繪', 'PVC 軟膠'], shapes: ['圓柱環型', '皮革平鋪式', '五邊形柱狀', '不規則 3D'] },
+                souvenir: { isCustom: false, name: '紀念品', types: ['雙面鑄造', '噴砂', '拉絲', '仿古電鍍'], shapes: ['挑戰幣', '鑰匙扣', '紀念章', '領帶夾'] }
+            });
+
+            const initialColors = ['#2D5A27', '#5D4037', '#FF9800', '#FFFFFF', '#000000', '#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#00FFFF', '#FF00FF', '#C0C0C0', '#808080', '#800000', '#808080', '#008000'];
+
+            const [formData, setFormData] = useState({
+                path1: { activity: '', nature: '', idea: '', chineseText: '', englishText: '', designStyle: '' },
+                path2: { colors: initialColors },
+                path3: { refDesc: '', refUrl: '', fileName: '', hasRef: false },
+                path4: { module: 'badge', type: '硬琺瑯', shape: '圓形', customType: '', customShape: '' },
+                path5: { adjustment: '', craftAdjustment: '' }
+            });
+
+            // 隨機色彩功能 (找回)
+            const handleRandomColors = () => {
+                const randomHex = () => '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0').toUpperCase();
+                const newColors = Array.from({ length: 16 }, randomHex);
+                setFormData(prev => ({ ...prev, path2: { ...prev.path2, colors: newColors } }));
+            };
+
+            const handleGenerate = () => {
+                setIsGenerating(true);
+                setTimeout(() => { setIsGenerating(false); setCurrentStep('generated'); }, 1200);
+            };
+
+            const handleDownloadHTML = () => {
+                const { activity, idea, chineseText, englishText, designStyle } = formData.path1;
+                const { module, type, shape, customType, customShape } = formData.path4;
+                const activeColors = formData.path2.colors.slice(0, colorCount);
+                const finalType = modules[module].isCustom ? customType : type;
+                const finalShape = modules[module].isCustom ? customShape : shape;
+
+                const colorRows = activeColors.map((color, i) => `
+                    <div style="display: flex; align-items: center; gap: 20px; padding: 12px; border-bottom: 1px solid #eee;">
+                        <div style="width: 40px; height: 40px; border-radius: 4px; background-color: ${color}; border: 1px solid #ddd;"></div>
+                        <div style="font-family: monospace; font-size: 12px;">#${i+1}: ${color}</div>
                     </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1"><Compass size={10}/>設計風格</label>
-                      <input className="w-full p-3 bg-slate-50 rounded-xl text-xs outline-none" placeholder="如：動漫風、日本風" value={formData.path1.designStyle} onChange={e => setFormData({...formData, path1: {...formData.path1, designStyle: e.target.value}})} />
-                    </div>
-                  </div>
-                  
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1"><PenTool size={10}/>設計理念</label>
-                    <textarea className="w-full p-4 bg-slate-50 rounded-2xl h-24 text-xs outline-none resize-none" value={formData.path1.idea} onChange={e => setFormData({...formData, path1: {...formData.path1, idea: e.target.value}})} />
-                  </div>
+                `).join('');
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1"><Languages size={10}/>顯示中文文字</label>
-                      <input className="w-full p-3 bg-slate-50 rounded-xl text-xs outline-none" placeholder="欲加入圖中的中文" value={formData.path1.chineseText} onChange={e => setFormData({...formData, path1: {...formData.path1, chineseText: e.target.value}})} />
+                const htmlContent = `<html><body style="font-family:sans-serif;padding:40px;background:#f8fafc;">
+                    <div style="background:white;padding:40px;border-radius:24px;max-width:600px;margin:auto;box-shadow:0 10px 30px rgba(0,0,0,0.05);">
+                        <h1 style="margin:0;font-style:italic;">SPEC: ${activity || 'Untitled'}</h1>
+                        <p style="color:#64748b;">${modules[module].name} / ${finalType} / ${finalShape}</p>
+                        <hr style="margin:20px 0;border:none;border-top:2px solid #f1f5f9;">
+                        <h3>設計理念與風格</h3><p>理念: ${idea}</p><p>風格: ${designStyle}</p>
+                        <p>中文文字: ${chineseText || '無'} | 英文文字: ${englishText || '無'}</p>
+                        <h3>色彩設定</h3>${colorRows}
                     </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1"><TypeIcon size={10}/>顯示英文文字</label>
-                      <input className="w-full p-3 bg-slate-50 rounded-xl text-xs outline-none" placeholder="欲加入圖中的英文" value={formData.path1.englishText} onChange={e => setFormData({...formData, path1: {...formData.path1, englishText: e.target.value}})} />
-                    </div>
-                  </div>
-                </div>
-              )}
+                </body></html>`;
 
-              {activeTab === 'path2' && (
-                <div className="space-y-6 animate-in fade-in duration-300">
-                  <div className="flex justify-between items-center">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest italic">色彩管理系統</label>
-                    <button onClick={handleRandomColors} className="text-[10px] font-black text-emerald-600 flex items-center gap-1 hover:bg-emerald-50 px-2 py-1 rounded-lg transition-all">
-                      <RefreshCw size={12}/> 隨機色彩
-                    </button>
-                  </div>
-                  <input type="range" min="1" max="16" value={colorCount} onChange={(e) => setColorCount(parseInt(e.target.value))} className="w-full accent-emerald-500" />
-                  <div className="grid grid-cols-4 gap-2">
-                    {formData.path2.colors.slice(0, colorCount).map((color, idx) => (
-                      <input key={idx} type="color" value={color} onChange={(e) => handleColorChange(idx, e.target.value)} className="w-full h-10 rounded-lg cursor-pointer border-none" />
-                    ))}
-                  </div>
-                </div>
-              )}
+                const blob = new Blob([htmlContent], { type: 'text/html' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `Spec_${activity}.html`;
+                link.click();
+            };
 
-              {activeTab === 'path3' && (
-                <div className="space-y-6 animate-in fade-in duration-300">
-                  <div className="flex items-center gap-2 mb-2">
-                    <input type="checkbox" id="hasRef" checked={formData.path3.hasRef} onChange={e => setFormData({...formData, path3: {...formData.path3, hasRef: e.target.checked}})} className="w-4 h-4 accent-emerald-500" />
-                    <label htmlFor="hasRef" className="text-xs font-bold text-slate-600 cursor-pointer">啟用參考資料</label>
-                  </div>
-                  
-                  <div className={`space-y-4 transition-all duration-300 ${formData.path3.hasRef ? 'opacity-100 pointer-events-auto' : 'opacity-30 pointer-events-none'}`}>
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">參考描述</label>
-                      <textarea className="w-full p-3 bg-slate-50 rounded-xl text-xs h-24 outline-none resize-none" placeholder="描述您參考的圖片細節..." value={formData.path3.refDesc} onChange={e => setFormData({...formData, path3: {...formData.path3, refDesc: e.target.value}})} />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">參考 URL</label>
-                      <input className="w-full p-3 bg-slate-50 rounded-xl text-xs outline-none" placeholder="https://..." value={formData.path3.refUrl} onChange={e => setFormData({...formData, path3: {...formData.path3, refUrl: e.target.value}})} />
-                    </div>
-                    <div className="p-4 border-2 border-dashed border-slate-200 rounded-2xl text-center cursor-pointer hover:bg-slate-50 transition-all">
-                      <UploadCloud size={24} className="mx-auto text-slate-300 mb-2" />
-                      <p className="text-[10px] font-bold text-slate-400 uppercase">點擊上傳參考底圖</p>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {activeTab === 'path4' && (
-                <div className="space-y-6 animate-in fade-in duration-300">
-                  <div className="flex justify-between items-center mb-1">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">物品種類</label>
-                    <button 
-                      onClick={() => setShowCustomModule(!showCustomModule)} 
-                      className="text-[9px] font-black text-emerald-600 hover:bg-emerald-50 px-2 py-1 rounded-lg transition-colors flex items-center gap-1"
-                    >
-                      <Plus size={10}/> 自訂類別
-                    </button>
-                  </div>
-
-                  {showCustomModule && (
-                    <div className="bg-emerald-50 p-3 rounded-xl border border-emerald-100 flex gap-2 mb-4">
-                      <input 
-                        className="flex-1 p-2 bg-white rounded-lg text-xs outline-none" 
-                        placeholder="例如：馬克杯、旗幟..." 
-                        value={customModuleName}
-                        onChange={e => setCustomModuleName(e.target.value)}
-                      />
-                      <button onClick={handleAddCustomModule} className="bg-emerald-600 text-white px-4 rounded-lg text-xs font-bold">新增</button>
-                    </div>
-                  )}
-
-                  <div className="grid grid-cols-3 gap-2">
-                    {Object.keys(modules).map(m => (
-                      <button
-                        key={m}
-                        onClick={() => setFormData({...formData, path4: { ...formData.path4, module: m, type: modules[m].types[0] || '', shape: modules[m].shapes[0] || '' }})}
-                        className={`py-4 rounded-xl text-[10px] font-black border-2 transition-all ${formData.path4.module === m ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-slate-50 text-slate-300'}`}
-                      >
-                        {modules[m].name}
-                      </button>
-                    ))}
-                  </div>
-                  
-                  <div className="space-y-4 pt-4 border-t border-slate-100">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block italic">載體工藝與形狀定義</label>
-                    
-                    {!modules[formData.path4.module].isCustom ? (
-                      <div className="flex gap-2">
-                        <select className="flex-1 p-3 bg-slate-50 rounded-xl text-[10px] font-bold outline-none" value={formData.path4.type} onChange={e => setFormData({...formData, path4: {...formData.path4, type: e.target.value}})}>
-                          {modules[formData.path4.module]?.types.map(t => <option key={t} value={t}>{t}</option>)}
-                        </select>
-                        <select className="flex-1 p-3 bg-slate-50 rounded-xl text-[10px] font-bold outline-none" value={formData.path4.shape} onChange={e => setFormData({...formData, path4: {...formData.path4, shape: e.target.value}})}>
-                          {modules[formData.path4.module]?.shapes.map(s => <option key={s} value={s}>{s}</option>)}
-                        </select>
-                      </div>
-                    ) : (
-                      <div className="space-y-3 animate-in slide-in-from-top-2">
-                        <div className="flex flex-col gap-1">
-                          <span className="text-[9px] text-emerald-600 font-bold uppercase italic px-1">自訂工藝方法</span>
-                          <input 
-                            className="w-full p-3 bg-emerald-50/30 border border-emerald-100 rounded-xl text-xs font-bold outline-none" 
-                            placeholder="請手動輸入工藝"
-                            value={formData.path4.customType}
-                            onChange={e => setFormData({...formData, path4: {...formData.path4, customType: e.target.value}})}
-                          />
+            return (
+                <div className="min-h-screen pb-20">
+                    <header className="bg-slate-950 text-white sticky top-0 z-50 border-b-4 border-emerald-500 px-6 py-4 flex items-center justify-between shadow-xl">
+                        <div className="flex items-center gap-3">
+                            <div className="bg-emerald-500 p-1.5 rounded-lg"><Icon name="Shield" /></div>
+                            <div>
+                                <h1 className="text-lg font-black italic uppercase tracking-tighter leading-none">Tung Design v2.7.2</h1>
+                                <p className="text-[8px] text-emerald-400 font-bold tracking-[0.3em] mt-1">PRO SPEC ENGINE</p>
+                            </div>
                         </div>
-                        <div className="flex flex-col gap-1">
-                          <span className="text-[9px] text-emerald-600 font-bold uppercase italic px-1">自訂物品形狀</span>
-                          <input 
-                            className="w-full p-3 bg-emerald-50/30 border border-emerald-100 rounded-xl text-xs font-bold outline-none" 
-                            placeholder="請手動輸入形狀"
-                            value={formData.path4.customShape}
-                            onChange={e => setFormData({...formData, path4: {...formData.path4, customShape: e.target.value}})}
-                          />
+                    </header>
+
+                    <main className="max-w-7xl mx-auto p-4 lg:p-8 grid grid-cols-1 lg:grid-cols-12 gap-6">
+                        {/* 控制面板 */}
+                        <div className="lg:col-span-5 space-y-4">
+                            <div className="bg-white rounded-[2rem] shadow-xl border border-slate-200 overflow-hidden">
+                                <div className="flex bg-slate-50 p-2 gap-1 border-b">
+                                    {['理念', '色彩', '參考', '載體', '微調'].map((label, idx) => (
+                                        <button
+                                            key={idx}
+                                            onClick={() => setActiveTab(`path${idx + 1}`)}
+                                            className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase transition-all ${activeTab === `path${idx + 1}` ? 'bg-white shadow text-emerald-600' : 'text-slate-400 hover:text-slate-600'}`}
+                                        >
+                                            {label}
+                                        </button>
+                                    ))}
+                                </div>
+
+                                <div className="p-6 min-h-[500px]">
+                                    {activeTab === 'path1' && (
+                                        <div className="space-y-4 animate-in fade-in">
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div className="space-y-1">
+                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1"><Icon name="Hash" size={10}/>活動名稱</label>
+                                                    <input className="w-full p-3 bg-slate-50 rounded-xl text-xs outline-none focus:ring-1 ring-emerald-500" value={formData.path1.activity} onChange={e => setFormData({...formData, path1: {...formData.path1, activity: e.target.value}})} />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1"><Icon name="Compass" size={10}/>設計風格</label>
+                                                    <input className="w-full p-3 bg-slate-50 rounded-xl text-xs outline-none focus:ring-1 ring-emerald-500" placeholder="如：動漫風、古典風" value={formData.path1.designStyle} onChange={e => setFormData({...formData, path1: {...formData.path1, designStyle: e.target.value}})} />
+                                                </div>
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1"><Icon name="PenTool" size={10}/>設計理念</label>
+                                                <textarea className="w-full p-4 bg-slate-50 rounded-2xl h-24 text-xs outline-none resize-none focus:ring-1 ring-emerald-500" value={formData.path1.idea} onChange={e => setFormData({...formData, path1: {...formData.path1, idea: e.target.value}})} />
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div className="space-y-1">
+                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1"><Icon name="Languages" size={10}/>顯示中文文字</label>
+                                                    <input className="w-full p-3 bg-slate-50 rounded-xl text-xs outline-none focus:ring-1 ring-emerald-500" placeholder="欲加入圖中的中文" value={formData.path1.chineseText} onChange={e => setFormData({...formData, path1: {...formData.path1, chineseText: e.target.value}})} />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1"><Icon name="Type" size={10}/>顯示英文文字</label>
+                                                    <input className="w-full p-3 bg-slate-50 rounded-xl text-xs outline-none focus:ring-1 ring-emerald-500" placeholder="欲加入圖中的英文" value={formData.path1.englishText} onChange={e => setFormData({...formData, path1: {...formData.path1, englishText: e.target.value}})} />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {activeTab === 'path2' && (
+                                        <div className="space-y-6 animate-in fade-in">
+                                            <div className="flex justify-between items-center">
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest italic">色彩管理系統</label>
+                                                <button onClick={handleRandomColors} className="text-[10px] font-black text-emerald-600 flex items-center gap-1 hover:bg-emerald-50 px-2 py-1 rounded-lg">
+                                                    <Icon name="RefreshCw" size={12}/> 隨機色彩
+                                                </button>
+                                            </div>
+                                            <input type="range" min="1" max="16" value={colorCount} onChange={(e) => setColorCount(parseInt(e.target.value))} className="w-full accent-emerald-500" />
+                                            <div className="grid grid-cols-4 gap-2">
+                                                {formData.path2.colors.slice(0, colorCount).map((color, idx) => (
+                                                    <input key={idx} type="color" value={color} onChange={(e) => {
+                                                        const newCols = [...formData.path2.colors];
+                                                        newCols[idx] = e.target.value.toUpperCase();
+                                                        setFormData({...formData, path2: {...formData.path2, colors: newCols}});
+                                                    }} className="w-full h-10 rounded-lg cursor-pointer border-none shadow-sm" />
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {activeTab === 'path3' && (
+                                        <div className="space-y-6 animate-in fade-in">
+                                            <div className="flex items-center gap-2 mb-2">
+                                                <input type="checkbox" id="hasRef" checked={formData.path3.hasRef} onChange={e => setFormData({...formData, path3: {...formData.path3, hasRef: e.target.checked}})} className="w-4 h-4 accent-emerald-500" />
+                                                <label htmlFor="hasRef" className="text-xs font-bold text-slate-600 cursor-pointer">啟用參考資料頁面</label>
+                                            </div>
+                                            <div className={`space-y-4 transition-all ${formData.path3.hasRef ? 'opacity-100' : 'opacity-30 pointer-events-none'}`}>
+                                                <textarea className="w-full p-3 bg-slate-50 rounded-xl text-xs h-24 outline-none resize-none border" placeholder="描述您的參考底圖細節..." value={formData.path3.refDesc} onChange={e => setFormData({...formData, path3: {...formData.path3, refDesc: e.target.value}})} />
+                                                <input className="w-full p-3 bg-slate-50 rounded-xl text-xs outline-none border" placeholder="參考網址 (如有)" value={formData.path3.refUrl} onChange={e => setFormData({...formData, path3: {...formData.path3, refUrl: e.target.value}})} />
+                                                <div className="p-6 border-2 border-dashed border-slate-200 rounded-2xl text-center hover:bg-slate-50 cursor-pointer transition-colors">
+                                                    <Icon name="UploadCloud" size={24} className="mx-auto text-slate-300 mb-2" />
+                                                    <p className="text-[10px] font-bold text-slate-400 uppercase">上傳參考底圖檔案</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {activeTab === 'path4' && (
+                                        <div className="space-y-6 animate-in fade-in">
+                                            <div className="flex justify-between items-center">
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">載體選擇</label>
+                                                <button onClick={() => setShowCustomModule(!showCustomModule)} className="text-[9px] font-black text-emerald-600 flex items-center gap-1">
+                                                    <Icon name="Plus" size={10}/> 自訂類別
+                                                </button>
+                                            </div>
+                                            {showCustomModule && (
+                                                <div className="bg-emerald-50 p-2 rounded-xl flex gap-2">
+                                                    <input className="flex-1 p-2 bg-white rounded-lg text-xs" placeholder="新種類名稱..." value={customModuleName} onChange={e => setCustomModuleName(e.target.value)} />
+                                                    <button onClick={() => {
+                                                        const id = `custom_${Date.now()}`;
+                                                        setModules({...modules, [id]: { isCustom: true, name: customModuleName, types: [], shapes: [] }});
+                                                        setFormData({...formData, path4: {...formData.path4, module: id}});
+                                                        setCustomModuleName(''); setShowCustomModule(false);
+                                                    }} className="bg-emerald-600 text-white px-3 rounded-lg text-xs font-bold">新增</button>
+                                                </div>
+                                            )}
+                                            <div className="grid grid-cols-3 gap-2">
+                                                {Object.keys(modules).map(m => (
+                                                    <button key={m} onClick={() => setFormData({...formData, path4: {...formData.path4, module: m, type: modules[m].types[0]||'', shape: modules[m].shapes[0]||''}})} className={`py-4 rounded-xl text-[10px] font-black border-2 transition-all ${formData.path4.module === m ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-slate-50 text-slate-300'}`}>
+                                                        {modules[m].name}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                            <div className="pt-4 border-t border-slate-100">
+                                                {!modules[formData.path4.module].isCustom ? (
+                                                    <div className="flex gap-2">
+                                                        <select className="flex-1 p-3 bg-slate-50 rounded-xl text-xs font-bold outline-none" value={formData.path4.type} onChange={e => setFormData({...formData, path4: {...formData.path4, type: e.target.value}})}>
+                                                            {modules[formData.path4.module].types.map(t => <option key={t}>{t}</option>)}
+                                                        </select>
+                                                        <select className="flex-1 p-3 bg-slate-50 rounded-xl text-xs font-bold outline-none" value={formData.path4.shape} onChange={e => setFormData({...formData, path4: {...formData.path4, shape: e.target.value}})}>
+                                                            {modules[formData.path4.module].shapes.map(s => <option key={s}>{s}</option>)}
+                                                        </select>
+                                                    </div>
+                                                ) : (
+                                                    <div className="space-y-2">
+                                                        <input className="w-full p-3 bg-emerald-50/50 rounded-xl text-xs font-bold border border-emerald-100" placeholder="請手動輸入工藝種類" value={formData.path4.customType} onChange={e => setFormData({...formData, path4: {...formData.path4, customType: e.target.value}})} />
+                                                        <input className="w-full p-3 bg-emerald-50/50 rounded-xl text-xs font-bold border border-emerald-100" placeholder="請手動輸入外觀形狀" value={formData.path4.customShape} onChange={e => setFormData({...formData, path4: {...formData.path4, customShape: e.target.value}})} />
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {activeTab === 'path5' && (
+                                        <div className="space-y-4 animate-in fade-in">
+                                            <div className="p-4 bg-slate-50 rounded-2xl space-y-3 border">
+                                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest italic block">增量微調 (Incremental Update)</label>
+                                                <textarea className="w-full p-3 bg-white rounded-xl text-xs h-24 resize-none border" placeholder="輸入具體的修正指令..." value={formData.path5.adjustment} onChange={e => setFormData({...formData, path5: {...formData.path5, adjustment: e.target.value}})} />
+                                                <button onClick={() => { setIsAdjusting(true); setTimeout(() => setIsAdjusting(false), 1000); }} disabled={currentStep === 'idle'} className="w-full py-3 bg-blue-600 text-white rounded-xl font-black text-[10px] uppercase flex items-center justify-center gap-2 hover:bg-blue-700 disabled:opacity-30 shadow-lg shadow-blue-600/20">
+                                                    {isAdjusting ? <Icon name="Loader2" size={14} className="animate-spin" /> : <Icon name="Sliders" size={14} />}
+                                                    更新當前圖稿
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            <button onClick={handleGenerate} disabled={isGenerating || !formData.path1.idea} className="w-full py-5 bg-slate-950 text-white rounded-3xl font-black text-lg shadow-2xl hover:bg-black transition-all flex items-center justify-center gap-3 disabled:opacity-30 active:scale-95">
+                                {isGenerating ? <Icon name="Loader2" size={24} className="animate-spin" /> : <Icon name="Wand2" size={24} />}
+                                {currentStep === 'generated' ? '重新生成基礎底圖' : '生成專業設計底圖'}
+                            </button>
                         </div>
-                      </div>
+
+                        {/* 預覽面板 */}
+                        <div className="lg:col-span-7 space-y-4">
+                            <div className="bg-slate-900 rounded-[2.5rem] shadow-2xl border-[6px] border-white overflow-hidden relative min-h-[550px] flex flex-col">
+                                <div className="p-6 bg-slate-800/50 flex items-center justify-between border-b border-white/5">
+                                    <div className="flex bg-slate-950 p-1 rounded-full">
+                                        <button onClick={() => setViewMode('clean')} className={`px-6 py-2 rounded-full text-[10px] font-black transition-all ${viewMode === 'clean' ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30' : 'text-slate-500 hover:text-slate-300'}`}>向量底圖</button>
+                                        <button onClick={() => setViewMode('craft')} className={`px-6 py-2 rounded-full text-[10px] font-black transition-all ${viewMode === 'craft' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30' : 'text-slate-500 hover:text-slate-300'}`}>成品模擬</button>
+                                    </div>
+                                    {currentStep === 'generated' && (
+                                        <button onClick={() => setShowSpecModal(true)} className="px-5 py-2 bg-white text-slate-950 rounded-full font-black text-[10px] uppercase hover:bg-emerald-500 hover:text-white transition-all shadow-xl">
+                                            產出規格書
+                                        </button>
+                                    )}
+                                </div>
+
+                                <div className="flex-1 flex flex-col items-center justify-center p-8 text-center relative">
+                                    {currentStep === 'idle' ? (
+                                        <div className="opacity-20 flex flex-col items-center">
+                                            <Icon name="Globe" size={60} className="text-white mb-4 animate-pulse" />
+                                            <p className="text-white text-[10px] font-black uppercase tracking-[0.4em]">Engine Standby...</p>
+                                        </div>
+                                    ) : (
+                                        <div className="animate-in zoom-in-95 duration-500">
+                                            <div className={`w-64 h-64 rounded-full flex items-center justify-center shadow-[0_0_50px_rgba(0,0,0,0.5)] mx-auto transition-all duration-700 ${viewMode === 'clean' ? 'bg-emerald-500' : 'bg-blue-600 rotate-12'}`}>
+                                                <Icon name="Shield" size={120} className="text-white drop-shadow-2xl" />
+                                            </div>
+                                            <h3 className="text-white mt-10 text-4xl font-black italic uppercase italic drop-shadow-md tracking-tight">{formData.path1.activity || 'New Design'}</h3>
+                                            <div className="flex gap-2 justify-center mt-4">
+                                                <span className="text-[10px] text-white/50 bg-white/10 px-4 py-1 rounded-full border border-white/10 font-black uppercase tracking-widest">{modules[formData.path4.module].name}</span>
+                                                <span className="text-[10px] text-white/50 bg-white/10 px-4 py-1 rounded-full border border-white/10 font-black uppercase tracking-widest">
+                                                    {modules[formData.path4.module].isCustom ? (formData.path4.customType || '自定義工藝') : formData.path4.type}
+                                                </span>
+                                            </div>
+                                            {formData.path1.designStyle && (
+                                                <p className="text-emerald-400 text-[10px] mt-6 font-bold uppercase tracking-[0.2em] italic">Style: {formData.path1.designStyle}</p>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </main>
+
+                    {/* 規格書彈窗 */}
+                    {showSpecModal && (
+                        <div className="fixed inset-0 z-[100] bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4">
+                            <div className="bg-white rounded-[2.5rem] w-full max-w-lg p-10 space-y-6 shadow-[0_0_100px_rgba(16,185,129,0.3)] relative animate-in zoom-in-95">
+                                <button onClick={() => setShowSpecModal(false)} className="absolute top-8 right-8 p-2 hover:bg-slate-100 rounded-full transition-colors"><Icon name="X" /></button>
+                                <div>
+                                    <h2 className="text-3xl font-black italic uppercase tracking-tighter">Master Spec</h2>
+                                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Final Design Parameters</p>
+                                </div>
+                                <div className="bg-slate-50 p-6 rounded-[2rem] space-y-5 border">
+                                    <div className="grid grid-cols-2 gap-6">
+                                        <div className="space-y-1">
+                                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">項目與類別</p>
+                                            <p className="text-sm font-black text-slate-800">{formData.path1.activity || '未命名'} / {modules[formData.path4.module].name}</p>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">指定設計風格</p>
+                                            <p className="text-sm font-black italic text-emerald-600">{formData.path1.designStyle || '預設通用'}</p>
+                                        </div>
+                                    </div>
+                                    <div className="space-y-2 pt-4 border-t border-slate-200">
+                                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">版面顯示文字</p>
+                                        <div className="flex flex-col gap-1">
+                                            <div className="flex justify-between text-[11px] font-bold"><span>中文:</span> <span className="text-slate-500">{formData.path1.chineseText || '無'}</span></div>
+                                            <div className="flex justify-between text-[11px] font-bold"><span>英文:</span> <span className="text-slate-500">{formData.path1.englishText || '無'}</span></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <button onClick={handleDownloadHTML} className="w-full py-5 bg-emerald-600 text-white rounded-full font-black uppercase tracking-[0.2em] flex items-center justify-center gap-3 hover:bg-emerald-700 transition-all shadow-xl shadow-emerald-600/20 active:scale-95">
+                                    <Icon name="Download" size={20}/> 下載正式 HTML 規格書
+                                </button>
+                            </div>
+                        </div>
                     )}
-                  </div>
                 </div>
-              )}
+            );
+        };
 
-              {activeTab === 'path5' && (
-                <div className="space-y-4 animate-in fade-in duration-300">
-                  <div className="p-4 bg-slate-50 rounded-2xl space-y-3">
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block italic">二次微調修正 (Incremental Adjustment)</label>
-                    <textarea
-                      className="w-full p-3 bg-white rounded-xl text-xs outline-none h-24 resize-none border border-slate-100"
-                      placeholder="在現有底圖基礎上微調..."
-                      value={formData.path5.adjustment}
-                      onChange={e => setFormData({...formData, path5: {...formData.path5, adjustment: e.target.value}})}
-                    />
-                    <textarea
-                      className="w-full p-3 bg-white rounded-xl text-xs outline-none h-24 resize-none border border-slate-100"
-                      placeholder="針對成品工藝細節進行微調..."
-                      value={formData.path5.craftAdjustment}
-                      onChange={e => setFormData({...formData, path5: {...formData.path5, craftAdjustment: e.target.value}})}
-                    />
-                    <button
-                      onClick={handleAdjustment}
-                      disabled={currentStep === 'idle' || isAdjusting}
-                      className="w-full py-3 bg-blue-600 text-white rounded-xl font-black text-[10px] uppercase flex items-center justify-center gap-2 hover:bg-blue-700 transition-all disabled:opacity-30 shadow-lg shadow-blue-600/20"
-                    >
-                      {isAdjusting ? <Loader2 className="animate-spin" size={14}/> : <Sliders size={14}/>}
-                      執行微調更新 (基於現有圖稿)
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <button
-            onClick={handleGenerate}
-            disabled={isGenerating || !formData.path1.idea}
-            className="w-full py-5 bg-slate-950 text-white rounded-3xl font-black text-lg shadow-xl hover:bg-black transition-all flex items-center justify-center gap-3 disabled:opacity-30 active:scale-95"
-          >
-            {isGenerating ? <Loader2 className="animate-spin" size={24}/> : <Wand2 size={24}/>}
-            {currentStep === 'generated' ? '重新生成基礎底圖' : '生成專業設計底圖'}
-          </button>
-        </div>
-
-        {/* 右側預覽區 */}
-        <div className="lg:col-span-7 space-y-4">
-          <div className="bg-slate-900 rounded-[2.5rem] shadow-2xl border-[6px] border-white overflow-hidden relative min-h-[550px] flex flex-col">
-            <div className="p-6 bg-slate-800/50 flex items-center justify-between border-b border-white/5">
-              <div className="flex bg-slate-950 p-1 rounded-full">
-                <button onClick={() => setViewMode('clean')} className={`px-6 py-2 rounded-full text-[10px] font-black transition-all ${viewMode === 'clean' ? 'bg-emerald-500 text-white' : 'text-slate-500'}`}>向量底圖</button>
-                <button onClick={() => setViewMode('craft')} className={`px-6 py-2 rounded-full text-[10px] font-black transition-all ${viewMode === 'craft' ? 'bg-blue-600 text-white' : 'text-slate-500'}`}>成品模擬</button>
-              </div>
-              {currentStep === 'generated' && (
-                <button onClick={() => setShowSpecModal(true)} className="px-5 py-2 bg-white text-slate-950 rounded-full font-black text-[10px] uppercase hover:bg-emerald-500 hover:text-white transition-all shadow-xl">
-                  產出規格書
-                </button>
-              )}
-            </div>
-
-            <div className="flex-1 flex items-center justify-center p-8 relative">
-              {isAdjusting && (
-                <div className="absolute inset-0 z-10 bg-slate-900/40 flex items-center justify-center backdrop-blur-[2px]">
-                  <div className="bg-blue-600 text-white px-4 py-2 rounded-full text-[10px] font-black animate-pulse">正在精確微調中...</div>
-                </div>
-              )}
-              
-              {currentStep === 'idle' ? (
-                <div className="text-center opacity-20"><Globe size={60} className="text-white mx-auto mb-4 animate-pulse"/><p className="text-white text-[10px] font-black uppercase tracking-widest">Waiting for Design Specs...</p></div>
-              ) : (
-                <div className="text-center animate-in zoom-in-95 duration-500">
-                  <div className={`w-64 h-64 rounded-full flex items-center justify-center shadow-2xl transition-all duration-700 ${viewMode === 'clean' ? 'bg-emerald-500 rotate-0' : 'bg-blue-600 rotate-12'}`}>
-                    <Shield size={100} className="text-white"/>
-                  </div>
-                  <h3 className="text-white mt-8 text-3xl font-black italic uppercase drop-shadow-lg">{formData.path1.activity || 'New Project'}</h3>
-                  <div className="flex gap-2 justify-center mt-4">
-                    <span className="text-[10px] text-white/50 bg-white/10 px-3 py-1 rounded-full border border-white/10 uppercase font-black">{modules[formData.path4.module].name}</span>
-                    <span className="text-[10px] text-white/50 bg-white/10 px-3 py-1 rounded-full border border-white/10 uppercase font-black">
-                      {modules[formData.path4.module].isCustom ? (formData.path4.customType || '自定義工藝') : formData.path4.type}
-                    </span>
-                  </div>
-                  {formData.path1.designStyle && (
-                    <p className="text-white/40 text-[9px] mt-4 uppercase font-bold tracking-widest italic">Style Context: {formData.path1.designStyle}</p>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </main>
-
-      {/* 規格書彈窗 */}
-      {showSpecModal && (
-        <div className="fixed inset-0 z-[100] bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-[2rem] w-full max-w-2xl p-8 space-y-6 animate-in zoom-in-95 shadow-[0_0_100px_rgba(16,185,129,0.2)]">
-            <div className="flex justify-between items-center">
-              <div>
-                <h2 className="text-2xl font-black italic uppercase">Design Master Spec</h2>
-                <p className="text-[10px] text-slate-400 font-bold uppercase">Ready for Production</p>
-              </div>
-              <button onClick={() => setShowSpecModal(false)} className="p-2 hover:bg-slate-100 rounded-full transition-colors"><X size={20}/></button>
-            </div>
-            
-            <div className="bg-slate-50 p-6 rounded-2xl space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <p className="text-[9px] font-black text-slate-400 uppercase">活動 / 類別</p>
-                  <p className="text-sm font-black">{formData.path1.activity || '未命名'} / {modules[formData.path4.module].name}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-[9px] font-black text-slate-400 uppercase">設計風格</p>
-                  <p className="text-sm font-black italic">{formData.path1.designStyle || '預設'}</p>
-                </div>
-              </div>
-            </div>
-
-            <button onClick={handleDownloadHTML} className="w-full py-5 bg-emerald-600 text-white rounded-full font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-emerald-700 transition-all shadow-xl shadow-emerald-600/20 active:scale-95">
-              <Download size={20}/> 下載正式技術規格書 (HTML)
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-export default App;
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
