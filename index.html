@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tung Design v2.5.9 - 筲箕灣區童軍數位設計系統</title>
+    <!-- 引入 Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 React 運行環境 -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- 引入 Lucide 圖標 -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #10b981; border-radius: 10px; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // 自定義 Icon 組件，確保在 CDN 環境下安全渲染
+        const Icon = ({ name, size = 24, className = "" }) => {
+            const iconRef = useRef(null);
+
+            useEffect(() => {
+                if (window.lucide && iconRef.current) {
+                    // 清除舊內容
+                    iconRef.current.innerHTML = '';
+                    // 建立新的圖標元素
+                    const iconElement = document.createElement('i');
+                    iconElement.setAttribute('data-lucide', name);
+                    if (size) iconElement.style.width = `${size}px`;
+                    if (size) iconElement.style.height = `${size}px`;
+                    iconRef.current.appendChild(iconElement);
+                    // 執行 lucide 渲染
+                    window.lucide.createIcons({
+                        attrs: {
+                            class: className,
+                            'stroke-width': 2
+                        },
+                        nameAttr: 'data-lucide'
+                    });
+                }
+            }, [name, size, className]);
+
+            return <span ref={iconRef} className={`inline-flex items-center justify-center ${className}`} style={{ width: size, height: size }}></span>;
+        };
+
+        const App = () => {
+          const [apiKey, setApiKey] = useState(() => {
+            try { return localStorage.getItem('tung_design_apikey') || ""; } catch (e) { return ""; }
+          });
+          
+          const [showKeyModal, setShowKeyModal] = useState(!apiKey);
+          const [activeTab, setActiveTab] = useState('path1');
+          const [viewMode, setViewMode] = useState('clean');
+          const [isGenerating, setIsGenerating] = useState(false);
+          const [currentStep, setCurrentStep] = useState('idle');
+          const [aiStatus, setAiStatus] = useState(apiKey ? '系統就緒' : '請配置 API Key');
+          const [generatedImages, setGeneratedImages] = useState({ clean: null, craft: null });
+
+          const modules = {
+            badge: { name: '徽章', types: ['平繡', '立體繡', '織嘜', '軟琺瑯', '硬琺瑯', '印刷滴膠', '金屬噴砂'], shapes: ['圓形', '橢圓', '盾形', '正方形', '五角形', '異形'] },
+            woggle: { name: '巾圈', types: ['皮革雷雕', '鋅合金鑄造', '皮革烙印', '木質噴繪', 'PVC 軟膠'], shapes: ['圓柱環型', '皮革平鋪式', '五邊形柱狀', '不規則 3D 造型'] },
+            souvenir: { name: '紀念品', types: ['雙面鑄造', '噴砂', '拉絲', '仿古電鍍'], shapes: ['挑戰幣', '鑰匙扣', '紀念章'] }
+          };
+
+          const [formData, setFormData] = useState({
+            path1: { activity: '', idea: '' },
+            path2: { colors: ['#2D5A27', '#5D4037', '#FF9800', '#FFFFFF'] },
+            path4: { module: 'badge', type: '硬琺瑯', shape: '圓形' },
+            path5: { adjustment: '' }
+          });
+
+          const saveApiKey = (key) => {
+            setApiKey(key);
+            try { localStorage.setItem('tung_design_apikey', key); } catch (e) {}
+            setShowKeyModal(false);
+            setAiStatus("金鑰已保存");
+          };
+
+          const fetchWithRetry = async (url, options, maxRetries = 5) => {
+            if (!apiKey) { setShowKeyModal(true); throw new Error("請配置 API Key"); }
+            let delay = 1000;
+            for (let i = 0; i < maxRetries; i++) {
+              try {
+                const response = await fetch(url, options);
+                if (response.ok) return await response.json();
+                if (response.status === 401) { setShowKeyModal(true); throw new Error("API Key 無效"); }
+                await new Promise(r => setTimeout(r, delay)); delay *= 2;
+              } catch (err) { if (i === maxRetries - 1) throw err; await new Promise(r => setTimeout(r, delay)); delay *= 2; }
+            }
+          };
+
+          const handleGenerateCleanBase = async () => {
+            if (!formData.path1.idea) { setAiStatus("請填寫設計理念"); return; }
+            setIsGenerating(true); setViewMode('clean'); setAiStatus("AI 繪圖中...");
+            const cleanPrompt = `Flat 2D vector badge design. Shape: ${formData.path4.shape}. Subject: ${formData.path1.activity}. Palette: ${formData.path2.colors.join(',')}. NO TEXT. Concept: ${formData.path1.idea} ${formData.path5.adjustment}`;
+            try {
+              const result = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key=${apiKey}`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ instances: [{ prompt: cleanPrompt }], parameters: { sampleCount: 1 } })
+              });
+              const imageData = result?.predictions?.[0]?.bytesBase64Encoded;
+              if (imageData) {
+                setGeneratedImages(prev => ({ ...prev, clean: `data:image/png;base64,${imageData}`, craft: null }));
+                setCurrentStep('clean_ready');
+                setAiStatus("向量底圖生成成功");
+              }
+            } catch (e) { setAiStatus(e.message); } finally { setIsGenerating(false); }
+          };
+
+          const handleTransformToCraft = async () => {
+            if (!generatedImages.clean) return;
+            setIsGenerating(true); setViewMode('craft'); setAiStatus("材質模擬中...");
+            const rawBase64 = generatedImages.clean.split('base64,')[1];
+            const craftPrompt = `High-quality physical ${formData.path4.type} ${formData.path4.module} mockup. Realistic textures and metallic reflections. NO TEXT.`;
+            try {
+              const result = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  contents: [{ parts: [{ text: craftPrompt }, { inlineData: { mimeType: "image/png", data: rawBase64 } }] }],
+                  generationConfig: { responseModalities: ['TEXT', 'IMAGE'] }
+                })
+              });
+              const craftData = result?.candidates?.[0]?.content?.parts?.find(p => p.inlineData)?.inlineData?.data;
+              if (craftData) {
+                setGeneratedImages(prev => ({ ...prev, craft: `data:image/png;base64,${craftData}` }));
+                setCurrentStep('craft_ready'); setAiStatus("工藝模擬完成");
+              }
+            } catch (e) { setAiStatus(e.message); } finally { setIsGenerating(false); }
+          };
+
+          return (
+            <div className="min-h-screen bg-slate-50 text-slate-900 font-sans text-left relative">
+              {showKeyModal && (
+                <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+                  <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-md overflow-hidden">
+                    <div className="bg-emerald-500 p-8 text-white text-center">
+                      <Icon name="shield" size={48} className="mb-4" />
+                      <h2 className="text-2xl font-black uppercase italic">配置 AI 引擎金鑰</h2>
+                    </div>
+                    <div className="p-8 space-y-6">
+                      <input type="password" placeholder="貼上 Gemini API Key..." className="w-full p-4 bg-slate-100 rounded-2xl border-2 border-transparent focus:border-emerald-500 outline-none font-mono text-sm" onChange={(e) => setApiKey(e.target.value)} value={apiKey} />
+                      <button onClick={() => saveApiKey(apiKey)} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest hover:bg-black transition-all">儲存並進入系統</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <header className="bg-slate-950 text-white sticky top-0 z-50 border-b-4 border-emerald-500 shadow-xl p-4">
+                <div className="max-w-7xl mx-auto flex justify-between items-center">
+                  <div className="flex items-center gap-3">
+                    <div className="bg-emerald-500 p-2 rounded shadow-lg flex items-center justify-center">
+                      <Icon name="shield" size={20} className="text-white" />
+                    </div>
+                    <h1 className="text-sm font-black tracking-tighter uppercase italic">Tung Design v2.5.9</h1>
+                  </div>
+                  <div className="flex items-center gap-3 bg-slate-900 px-4 py-1.5 rounded-full border border-slate-800">
+                    <span className="text-[9px] font-mono font-bold text-emerald-400 uppercase tracking-widest">{aiStatus}</span>
+                  </div>
+                </div>
+              </header>
+
+              <main className="max-w-7xl mx-auto p-4 lg:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+                <div className="lg:col-span-5 space-y-4">
+                  <div className="bg-white rounded-[2rem] shadow-xl border border-slate-200 overflow-hidden">
+                    <div className="flex bg-slate-100 p-1.5 gap-1">
+                      {['path1', 'path2', 'path4', 'path5'].map((id, idx) => (
+                        <button key={id} onClick={() => setActiveTab(id)} className={`flex-1 py-3 rounded-xl text-[9px] font-black uppercase transition-all ${activeTab === id ? 'bg-white shadow-sm text-emerald-600 scale-105' : 'text-slate-400'}`}>
+                          {['理念', '色彩', '工藝', '微調'][idx]}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="p-6 min-h-[400px]">
+                      {activeTab === 'path1' && (
+                        <div className="space-y-4">
+                          <input className="w-full p-4 bg-slate-50 rounded-2xl text-sm font-bold outline-none border-2 border-transparent focus:border-emerald-500" placeholder="活動名稱" value={formData.path1.activity} onChange={e => setFormData({...formData, path1: {...formData.path1, activity: e.target.value}})} />
+                          <textarea className="w-full p-4 bg-slate-50 rounded-3xl h-48 text-sm outline-none border-2 border-transparent focus:border-emerald-500 resize-none" placeholder="設計理念..." value={formData.path1.idea} onChange={e => setFormData({...formData, path1: {...formData.path1, idea: e.target.value}})} />
+                        </div>
+                      )}
+                      {activeTab === 'path2' && (
+                        <div className="grid grid-cols-2 gap-3">
+                          {formData.path2.colors.map((c, i) => (
+                            <div key={i} className="p-2 bg-slate-50 rounded-xl border flex items-center gap-2">
+                              <input type="color" value={c} onChange={e => {
+                                const n = [...formData.path2.colors]; n[i] = e.target.value;
+                                setFormData({...formData, path2: {...formData.path2, colors: n}});
+                              }} />
+                              <span className="text-[10px] font-mono font-bold">{c}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {activeTab === 'path4' && (
+                        <div className="space-y-4">
+                          <select className="w-full p-4 bg-slate-50 rounded-xl text-xs font-black outline-none border-2 border-transparent focus:border-emerald-500" value={formData.path4.type} onChange={e => setFormData({...formData, path4: {...formData.path4, type: e.target.value}})}>
+                            {modules[formData.path4.module].types.map(t => <option key={t} value={t}>{t}</option>)}
+                          </select>
+                        </div>
+                      )}
+                      {activeTab === 'path5' && (
+                        <div className="space-y-4">
+                           <textarea className="w-full p-4 bg-slate-50 rounded-3xl h-48 text-sm outline-none border-2 border-transparent focus:border-emerald-500 resize-none" placeholder="在此輸入微調要求（例如：增加金屬邊框細節）" value={formData.path5.adjustment} onChange={e => setFormData({...formData, path5: {...formData.path5, adjustment: e.target.value}})} />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <button onClick={handleGenerateCleanBase} disabled={isGenerating} className="w-full py-5 bg-slate-950 text-white rounded-[1.8rem] font-black text-lg shadow-xl hover:bg-black transition-all flex items-center justify-center gap-3 uppercase tracking-widest disabled:opacity-50">
+                    {isGenerating ? <Icon name="loader-2" className="animate-spin" /> : <Icon name="refresh-cw" size={20} />} 啟動設計
+                  </button>
+                  {currentStep !== 'idle' && (
+                    <button onClick={handleTransformToCraft} disabled={isGenerating} className="w-full py-5 bg-blue-600 text-white rounded-[1.8rem] font-black text-lg shadow-xl uppercase tracking-widest disabled:opacity-50">
+                      {isGenerating ? <Icon name="loader-2" className="animate-spin" /> : "執行材質模擬"}
+                    </button>
+                  )}
+                </div>
+
+                <div className="lg:col-span-7">
+                  <div className="bg-white rounded-[2.5rem] shadow-2xl border border-slate-200 overflow-hidden relative min-h-[500px] flex items-center justify-center">
+                    <div className="w-full h-full bg-slate-950 flex items-center justify-center">
+                      {currentStep === 'idle' ? (
+                        <div className="text-center opacity-20">
+                          <Icon name="image" size={80} className="text-white mb-4" />
+                          <p className="text-white text-xs font-bold uppercase tracking-widest">等待設計生成</p>
+                        </div>
+                      ) : (
+                        <img src={viewMode === 'clean' ? generatedImages.clean : (generatedImages.craft || generatedImages.clean)} className="max-w-full max-h-full object-contain p-6" />
+                      )}
+                      {isGenerating && (
+                        <div className="absolute inset-0 bg-slate-950/70 backdrop-blur-md flex flex-col items-center justify-center">
+                           <Icon name="loader-2" size={48} className="text-emerald-400 animate-spin mb-4" />
+                           <p className="text-emerald-400 text-xs font-black uppercase tracking-widest animate-pulse">{aiStatus}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </main>
+            </div>
+          );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
