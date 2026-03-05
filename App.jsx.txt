@@ -1,0 +1,503 @@
+import React, { useState, useEffect } from 'react';
+import { 
+  Shield, Palette, Settings, Download, Copy, 
+  CheckCircle2, PenTool, Zap, Box, 
+  FileText, Plus, Minus, RefreshCw, Image as ImageIcon, 
+  Paperclip, Check, Wand2, RotateCcw, Sparkles, Loader2, 
+  FileDown, Layers, MousePointer2, X, Info, ExternalLink, 
+  ChevronRight, Hash, UploadCloud, Link2, Undo2, Compass, Type, 
+  BrainCircuit, PaletteIcon, MessageSquarePlus, ArrowLeftRight, Trash2, FileUp, 
+  Dices, Sparkle, XCircle, Trash, Key, AlertTriangle
+} from 'lucide-react';
+
+/**
+ * Tung Design v2.5.9 - 部署穩定版 (修正編譯相容性)
+ * 功能：提供童軍徽章、巾圈設計與工藝材質模擬
+ */
+
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'tung-design-v2-5-9';
+
+const App = () => {
+  // --- 狀態管理 ---
+  // 修正：移除 import.meta 以避免在舊版環境中出錯，優先從 localStorage 讀取
+  const [apiKey, setApiKey] = useState(() => {
+    try {
+      return localStorage.getItem('tung_design_apikey') || "";
+    } catch (e) {
+      return "";
+    }
+  });
+  
+  const [showKeyModal, setShowKeyModal] = useState(!apiKey);
+  const [activeTab, setActiveTab] = useState('path1');
+  const [viewMode, setViewMode] = useState('clean');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [currentStep, setCurrentStep] = useState('idle');
+  const [aiStatus, setAiStatus] = useState(apiKey ? '系統就緒' : '請配置 API Key');
+  const [generatedImages, setGeneratedImages] = useState({ clean: null, craft: null });
+
+  const modules = {
+    badge: { name: '徽章', types: ['平繡', '立體繡', '織嘜', '軟琺瑯', '硬琺瑯', '印刷滴膠', '金屬噴砂'], shapes: ['圓形', '橢圓', '盾形', '正方形', '五角形', '異形'] },
+    woggle: { name: '巾圈', types: ['皮革雷雕', '鋅合金鑄造', '皮革烙印', '木質噴繪', 'PVC 軟膠'], shapes: ['圓柱環型', '皮革平鋪式', '五邊形柱狀', '不規則 3D 造型'] },
+    souvenir: { name: '紀念品', types: ['雙面鑄造', '噴砂', '拉絲', '仿古電鍍'], shapes: ['挑戰幣', '鑰匙扣', '紀念章'] }
+  };
+
+  const [formData, setFormData] = useState({
+    path1: { activity: '', nature: '', idea: '' },
+    path2: { colors: ['#2D5A27', '#5D4037', '#FF9800', '#FFFFFF'] },
+    path3: { refFiles: [], refDesc: '' },
+    path4: { module: 'badge', type: '硬琺瑯', shape: '圓形' },
+    path5: { adjustment: '', craftAdjustment: '' }
+  });
+
+  const saveApiKey = (key) => {
+    setApiKey(key);
+    try {
+      localStorage.setItem('tung_design_apikey', key);
+    } catch (e) {
+      console.warn("無法儲存至 localStorage");
+    }
+    setShowKeyModal(false);
+    setAiStatus("金鑰已保存");
+  };
+
+  // --- 核心工具函數 ---
+  const getAltCodes = (hex) => {
+    const r = parseInt(hex.slice(1, 3), 16) || 0;
+    const g = parseInt(hex.slice(3, 5), 16) || 0;
+    const b = parseInt(hex.slice(5, 7), 16) || 0;
+    let c = 1 - (r / 255);
+    let m = 1 - (g / 255);
+    let y = 1 - (b / 255);
+    let k = Math.min(c, m, y);
+    if (k === 1) { c = m = y = 0; } else {
+      c = Math.round(((c - k) / (1 - k)) * 100);
+      m = Math.round(((m - k) / (1 - k)) * 100);
+      y = Math.round(((y - k) / (1 - k)) * 100);
+    }
+    k = Math.round(k * 100);
+    return { hex, rgb: `RGB(${r}, ${g}, ${b})`, cmyk: `C:${c} M:${m} Y:${y} K:${k}` };
+  };
+
+  const handleFileUpload = (e) => {
+    const files = Array.from(e.target.files);
+    files.forEach(file => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setFormData(prev => ({
+          ...prev,
+          path3: { ...prev.path3, refFiles: [...prev.path3.refFiles, { name: file.name, data: reader.result }] }
+        }));
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const removeFile = (index) => {
+    setFormData(prev => ({
+      ...prev,
+      path3: { ...prev.path3, refFiles: prev.path3.refFiles.filter((_, i) => i !== index) }
+    }));
+  };
+
+  // 規格單導出 (HTML 格式)
+  const handleDownloadPackage = (isFinal = false) => {
+    const projectName = formData.path1.activity || "Tung_Design_Project";
+    const dateStr = new Date().toLocaleString();
+    const colorHtml = formData.path2.colors.map(c => {
+      const codes = getAltCodes(c);
+      return `
+        <div style="display:flex; align-items:center; margin-bottom:10px; padding:10px; border-radius:8px; background:#f8fafc; border:1px solid #e2e8f0;">
+          <div style="width:40px; height:40px; border-radius:4px; background:${codes.hex}; border:1px solid rgba(0,0,0,0.1); margin-right:15px;"></div>
+          <div>
+            <div style="font-family:monospace; font-weight:bold; color:#1e293b;">HEX: ${codes.hex}</div>
+            <div style="font-size:11px; color:#64748b;">${codes.rgb} | ${codes.cmyk}</div>
+          </div>
+        </div>`;
+    }).join('');
+
+    const htmlContent = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${projectName} - 生產規格單</title><style>body { font-family: sans-serif; line-height: 1.6; color: #334155; max-width: 800px; margin: 40px auto; padding: 20px; background: #f1f5f9; }.card { background: white; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); overflow: hidden; border: 1px solid #e2e8f0; }.header { background: #0f172a; color: white; padding: 30px; text-align: center; }.content { padding: 40px; }.section-title { font-size: 12px; font-weight: 800; text-transform: uppercase; color: #10b981; letter-spacing: 0.1em; margin-bottom: 15px; border-bottom: 1px solid #f1f5f9; padding-bottom: 5px; }.grid { display: grid; grid-template-cols: 1fr 1fr; gap: 20px; margin-bottom: 30px; }.info-item { background: #f8fafc; padding: 15px; border-radius: 12px; }.info-label { font-size: 10px; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 4px; }.info-value { font-size: 14px; font-weight: bold; color: #1e293b; }.image-container { background: #0f172a; border-radius: 16px; padding: 20px; text-align: center; margin-bottom: 30px; }.image-container img { max-width: 100%; border-radius: 8px; box-shadow: 0 5px 15px rgba(0,0,0,0.3); }.footer { text-align: center; font-size: 10px; color: #94a3b8; padding: 20px; }</style></head><body><div class="card"><div class="header"><h1 style="margin:0; font-size:24px; letter-spacing:-0.02em;">TUNG DESIGN 生產數據報告</h1><p style="margin:5px 0 0; opacity:0.6; font-size:12px;">系統版本: v2.5.9 | 生成日期: ${dateStr}</p></div><div class="content"><div class="section-title">設計預覽 (${isFinal ? '成品模擬' : '向量底圖'})</div><div class="image-container"><img src="${isFinal ? (generatedImages.craft || generatedImages.clean) : generatedImages.clean}" alt="Design Preview" /></div><div class="section-title">生產核心規格</div><div class="grid"><div class="info-item"><div class="info-label">項目名稱</div><div class="info-value">${projectName}</div></div><div class="info-item"><div class="info-label">載體類別</div><div class="info-value">${modules[formData.path4.module].name}</div></div><div class="info-item"><div class="info-label">工藝工法</div><div class="info-value">${formData.path4.type}</div></div><div class="info-item"><div class="info-label">成品形狀</div><div class="info-value">${formData.path4.shape}</div></div></div><div class="section-title">指定色彩編碼 (共 ${formData.path2.colors.length} 色)</div><div style="display:grid; grid-template-cols: 1fr 1fr; gap:10px; margin-bottom:30px;">${colorHtml}</div></div><div class="footer">本文件由 Tung Design 自動化引擎生成，內容包含生產所需之完整像素數據與色碼。</div></div></body></html>`;
+
+    const blob = new Blob([htmlContent], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${projectName}_${isFinal ? '成品規格單' : '設計底稿'}.html`;
+    link.click();
+    setAiStatus("規格 HTML 已導出");
+  };
+
+  // --- API 調用邏輯 ---
+  const fetchWithRetry = async (url, options, maxRetries = 5) => {
+    if (!apiKey) {
+      setShowKeyModal(true);
+      throw new Error("請配置 API Key");
+    }
+    
+    let delay = 1000;
+    for (let i = 0; i < maxRetries; i++) {
+      try {
+        const response = await fetch(url, options);
+        if (response.ok) return await response.json();
+        
+        const errData = await response.json().catch(() => ({}));
+        const errMsg = errData?.error?.message || "";
+
+        if (response.status === 400 && errMsg.includes("location")) {
+          throw new Error("地區不支援：請嘗試使用 VPN。");
+        }
+
+        if (response.status === 401) {
+          setShowKeyModal(true);
+          throw new Error("API Key 無效，請重新檢查");
+        }
+        
+        if (response.status >= 500 || response.status === 429) { 
+          await new Promise(r => setTimeout(r, delay)); 
+          delay *= 2; 
+          continue; 
+        }
+        throw new Error(`請求失敗 (${response.status})`);
+      } catch (err) { 
+        if (i === maxRetries - 1 || err.message.includes('API') || err.message.includes('地區')) throw err; 
+        await new Promise(r => setTimeout(r, delay)); 
+        delay *= 2; 
+      }
+    }
+  };
+
+  const cleanBase64 = (str) => str.includes('base64,') ? str.split('base64,')[1] : str;
+
+  // 使用 Vision 進行圖像去雜質與去字
+  const handleVisionCleaning = async (base64Image) => {
+    setAiStatus("優化圖像品質...");
+    try {
+      const pureBase64 = cleanBase64(base64Image);
+      const result = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ 
+            parts: [
+              { text: `Clean up the design. Remove all text, labels, and background noise. Output only the pure graphic asset.` }, 
+              { inlineData: { mimeType: "image/png", data: pureBase64 } }
+            ] 
+          }],
+          generationConfig: { responseModalities: ['TEXT', 'IMAGE'] }
+        })
+      });
+      const cleanedData = result?.candidates?.[0]?.content?.parts?.find(p => p.inlineData)?.inlineData?.data;
+      return cleanedData ? `data:image/png;base64,${cleanedData}` : null;
+    } catch (e) { return null; }
+  };
+
+  const handleRandomizePalette = () => {
+    const generateRandomHex = () => '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0').toUpperCase();
+    const newColors = Array.from({ length: formData.path2.colors.length }, () => generateRandomHex());
+    setFormData(prev => ({ ...prev, path2: { ...prev.path2, colors: newColors } }));
+    setAiStatus("隨機配色已套用");
+  };
+
+  // 生成向量底圖
+  const handleGenerateCleanBase = async () => {
+    if (!formData.path1.idea) { setAiStatus("請填寫設計理念"); return; }
+    setIsGenerating(true);
+    setViewMode('clean');
+    setAiStatus("AI 繪圖中...");
+
+    const cleanPrompt = `Flat 2D vector badge design. Shape: ${formData.path4.shape}. Subject: ${formData.path1.activity}. Palette: ${formData.path2.colors.join(',')}. NO TEXT, NO LABELS. Concept: ${formData.path1.idea} ${formData.path5.adjustment}`;
+    
+    try {
+      const result = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key=${apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ instances: [{ prompt: cleanPrompt }], parameters: { sampleCount: 1 } })
+      });
+      const imageData = result?.predictions?.[0]?.bytesBase64Encoded;
+      if (imageData) {
+        const cleanedImage = await handleVisionCleaning(imageData);
+        setGeneratedImages(prev => ({ ...prev, clean: cleanedImage || `data:image/png;base64,${imageData}`, craft: null }));
+        setCurrentStep('clean_ready');
+      }
+      setAiStatus("向量底圖生成成功");
+    } catch (e) { setAiStatus(e.message); } finally { setIsGenerating(false); }
+  };
+
+  // 模擬材質工藝
+  const handleTransformToCraft = async () => {
+    if (!generatedImages.clean) return;
+    setIsGenerating(true);
+    setViewMode('craft');
+    setAiStatus("材質模擬中...");
+    
+    const rawBase64 = cleanBase64(generatedImages.clean);
+    const craftPrompt = `A high-quality studio photograph of a physical ${formData.path4.type} ${formData.path4.module}. Show realistic textures, metallic reflections, or stitching details. NO TEXT. Based on this design:`;
+
+    try {
+      const result = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: craftPrompt }, { inlineData: { mimeType: "image/png", data: rawBase64 } }] }],
+          generationConfig: { responseModalities: ['TEXT', 'IMAGE'] }
+        })
+      });
+      const craftData = result?.candidates?.[0]?.content?.parts?.find(p => p.inlineData)?.inlineData?.data;
+      if (craftData) {
+        setGeneratedImages(prev => ({ ...prev, craft: `data:image/png;base64,${craftData}` }));
+        setCurrentStep('craft_ready');
+        setAiStatus("工藝模擬完成");
+      }
+    } catch (e) { setAiStatus(e.message); } finally { setIsGenerating(false); }
+  };
+
+  // --- UI 佈局 ---
+  return (
+    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans text-left relative">
+      {/* API Key 配置彈窗 */}
+      {showKeyModal && (
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-md overflow-hidden">
+            <div className="bg-emerald-500 p-8 text-white text-center">
+              <Key size={48} className="mx-auto mb-4" />
+              <h2 className="text-2xl font-black uppercase italic">配置 AI 引擎金鑰</h2>
+              <p className="text-emerald-100 text-xs mt-2 font-bold uppercase tracking-widest italic">雲端安全通道 v2.5.9</p>
+            </div>
+            <div className="p-8 space-y-6">
+              <input 
+                type="password" 
+                placeholder="在此貼上您的 Gemini API Key..." 
+                className="w-full p-4 bg-slate-100 rounded-2xl border-2 border-transparent focus:border-emerald-500 outline-none font-mono text-sm" 
+                onChange={(e) => setApiKey(e.target.value)} 
+                value={apiKey} 
+              />
+              <button onClick={() => saveApiKey(apiKey)} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest hover:bg-black transition-all">
+                儲存並進入系統
+              </button>
+              <p className="text-[10px] text-slate-400 text-center uppercase tracking-tighter">金鑰將安全儲存在您的瀏覽器中</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 頂部導航欄 */}
+      <header className="bg-slate-950 text-white sticky top-0 z-50 border-b-4 border-emerald-500 shadow-xl p-4">
+        <div className="max-w-7xl mx-auto flex justify-between items-center">
+          <div className="flex items-center gap-3">
+            <div className="bg-emerald-500 p-2 rounded shadow-lg"><Shield size={20} /></div>
+            <div>
+              <h1 className="text-sm font-black tracking-tighter uppercase italic">Tung Design v2.5.9</h1>
+              <p className="text-[7px] text-emerald-400 font-bold uppercase tracking-widest">童軍數位設計系統</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <button onClick={() => setShowKeyModal(true)} className="flex items-center gap-2 px-3 py-1.5 rounded-full border bg-slate-900 border-slate-800 hover:border-emerald-500 transition-colors">
+              <Key size={12} className="text-emerald-500" />
+              <span className="text-[9px] font-mono font-bold uppercase tracking-widest text-white">{apiKey ? 'API 已連接' : '未配置金鑰'}</span>
+            </button>
+            <div className="flex items-center gap-3 bg-slate-900 px-4 py-1.5 rounded-full border border-slate-800">
+              {isGenerating ? <Loader2 size={12} className="text-emerald-500 animate-spin" /> : <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>}
+              <span className="text-[9px] font-mono font-bold text-emerald-400 uppercase tracking-widest">{aiStatus}</span>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* 主要內容區 */}
+      <main className="max-w-7xl mx-auto p-4 lg:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        {/* 左側：編輯區 */}
+        <div className="lg:col-span-5 space-y-4">
+          <div className="bg-white rounded-[2rem] shadow-xl border border-slate-200 overflow-hidden">
+            <div className="flex bg-slate-100 p-1.5 gap-1">
+              {['path1', 'path2', 'path3', 'path4', 'path5'].map((id, idx) => (
+                <button 
+                  key={id} 
+                  onClick={() => setActiveTab(id)} 
+                  className={`flex-1 py-3 rounded-xl text-[9px] font-black uppercase transition-all ${activeTab === id ? 'bg-white shadow-sm text-emerald-600 scale-105' : 'text-slate-400 hover:text-slate-600'}`}
+                >
+                  {['理念', '色彩', '參考', '工藝', '微調'][idx]}
+                </button>
+              ))}
+            </div>
+
+            <div className="p-6 min-h-[480px]">
+              {activeTab === 'path1' && (
+                <div className="space-y-4 animate-in fade-in duration-300">
+                  <div className="flex items-center gap-2 mb-2 uppercase text-[10px] font-black text-slate-600"><Sparkles size={14} className="text-emerald-500" /> 核心設計主題</div>
+                  <input className="w-full p-4 bg-slate-50 rounded-2xl text-sm font-bold border-2 border-transparent focus:border-emerald-500 outline-none" placeholder="活動名稱 (例如：2024 春季營火)" value={formData.path1.activity} onChange={e => setFormData({...formData, path1: {...formData.path1, activity: e.target.value}})} />
+                  <input className="w-full p-4 bg-slate-50 rounded-2xl text-sm font-bold border-2 border-transparent focus:border-emerald-500 outline-none" placeholder="視覺性質 (例如：懷舊復古、極簡主義)" value={formData.path1.nature} onChange={e => setFormData({...formData, path1: {...formData.path1, nature: e.target.value}})} />
+                  <textarea className="w-full p-4 bg-slate-50 rounded-3xl h-32 text-sm border-2 border-transparent focus:border-emerald-500 outline-none resize-none" placeholder="請詳細說明設計理念與關鍵圖騰..." value={formData.path1.idea} onChange={e => setFormData({...formData, path1: {...formData.path1, idea: e.target.value}})} />
+                </div>
+              )}
+              {activeTab === 'path2' && (
+                <div className="space-y-4 animate-in fade-in duration-300">
+                  <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-4">
+                    <div className="flex justify-between items-center">
+                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">色彩控制台</span>
+                      <div className="flex gap-1.5 items-center">
+                        <button onClick={() => formData.path2.colors.length > 1 && setFormData({...formData, path2: {...formData.path2, colors: formData.path2.colors.slice(0, -1)}})} className="w-8 h-8 bg-white border rounded-lg flex items-center justify-center hover:bg-slate-50"><Minus size={14}/></button>
+                        <div className="w-8 h-8 flex items-center justify-center font-mono font-bold text-xs bg-slate-900 text-white rounded-lg">{formData.path2.colors.length}</div>
+                        <button onClick={() => formData.path2.colors.length < 16 && setFormData({...formData, path2: {...formData.path2, colors: [...formData.path2.colors, '#CCCCCC']}})} className="w-8 h-8 bg-white border rounded-lg flex items-center justify-center hover:bg-slate-50"><Plus size={14}/></button>
+                      </div>
+                    </div>
+                    <button onClick={handleRandomizePalette} className="w-full flex items-center justify-center gap-2 py-3 bg-white border rounded-xl text-[10px] font-black text-slate-600 uppercase hover:shadow-md transition-all">
+                      <Dices size={14} className="text-emerald-500" /> 🎲 隨機探索配色
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 max-h-[280px] overflow-y-auto pr-2 custom-scrollbar">
+                    {formData.path2.colors.map((c, i) => (
+                      <div key={i} className="p-2 bg-slate-50 rounded-xl border flex items-center gap-2 group hover:border-emerald-200 transition-all">
+                        <input type="color" className="w-8 h-8 rounded-lg cursor-pointer bg-transparent border-0" value={c} onChange={e => {
+                          const n = [...formData.path2.colors]; n[i] = e.target.value;
+                          setFormData({...formData, path2: {...formData.path2, colors: n}});
+                        }} />
+                        <div className="flex flex-col text-left">
+                          <span className="text-[10px] font-mono font-bold text-slate-600 uppercase">{c}</span>
+                          <span className="text-[7px] text-slate-400 font-mono">{getAltCodes(c).cmyk}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {activeTab === 'path3' && (
+                <div className="space-y-4 animate-in fade-in duration-300">
+                  <div className="border-2 border-dashed border-slate-200 rounded-2xl p-6 text-center hover:border-emerald-500 hover:bg-emerald-50/30 transition-all relative group">
+                    <input type="file" multiple onChange={handleFileUpload} className="absolute inset-0 opacity-0 cursor-pointer" />
+                    <UploadCloud size={32} className="mx-auto mb-2 text-slate-300 group-hover:text-emerald-500" />
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest group-hover:text-emerald-600">上傳設計參考素材</p>
+                  </div>
+                  <div className="grid grid-cols-4 gap-2">
+                    {formData.path3.refFiles.map((file, idx) => (
+                      <div key={idx} className="relative aspect-square rounded-lg overflow-hidden border shadow-sm group">
+                        <img src={file.data} className="w-full h-full object-cover" alt="ref" />
+                        <button onClick={() => removeFile(idx)} className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-md opacity-0 group-hover:opacity-100 transition-opacity"><Trash size={10} /></button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {activeTab === 'path4' && (
+                <div className="space-y-6 animate-in fade-in duration-300">
+                  <div className="grid grid-cols-3 gap-2">
+                    {Object.keys(modules).map(m => (
+                      <button 
+                        key={m} 
+                        onClick={() => setFormData({...formData, path4: {...formData.path4, module: m, type: modules[m].types[0]}})} 
+                        className={`py-3 rounded-xl text-[10px] font-black border-2 transition-all ${formData.path4.module === m ? 'border-emerald-500 bg-emerald-50 text-emerald-700 shadow-sm' : 'border-slate-50 text-slate-300 hover:text-slate-400 uppercase'}`}
+                      >
+                        {modules[m].name}
+                      </button>
+                    ))}
+                  </div>
+                  <select 
+                    className="w-full p-4 bg-slate-50 rounded-xl text-xs font-black border-2 border-transparent focus:border-emerald-500 outline-none" 
+                    value={formData.path4.type} 
+                    onChange={e => setFormData({...formData, path4: {...formData.path4, type: e.target.value}})}
+                  >
+                    {modules[formData.path4.module].types.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                  <div className="flex flex-wrap gap-2">
+                    {modules[formData.path4.module].shapes.map(s => (
+                      <button 
+                        key={s} 
+                        onClick={() => setFormData({...formData, path4: {...formData.path4, shape: s}})} 
+                        className={`px-3 py-2 rounded-lg text-[9px] font-black uppercase transition-all ${formData.path4.shape === s ? 'bg-emerald-500 text-white shadow-md' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {activeTab === 'path5' && (
+                <div className="space-y-4 animate-in fade-in duration-300">
+                  <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100 space-y-3">
+                    <label className="text-[9px] font-black text-emerald-700 uppercase">1. 底圖微調 (例如：增加森林感)</label>
+                    <textarea className="w-full p-4 bg-white rounded-xl text-xs outline-none h-20 resize-none border-2 border-transparent focus:border-emerald-500" value={formData.path5.adjustment} onChange={e => setFormData({...formData, path5: {...formData.path5, adjustment: e.target.value}})} />
+                  </div>
+                  <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100 space-y-3">
+                    <label className="text-[9px] font-black text-blue-700 uppercase">2. 材質微調 (例如：加強金屬光澤)</label>
+                    <textarea className="w-full p-4 bg-white rounded-xl text-xs outline-none h-20 resize-none border-2 border-transparent focus:border-blue-500" value={formData.path5.craftAdjustment} onChange={e => setFormData({...formData, path5: {...formData.path5, craftAdjustment: e.target.value}})} />
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            {currentStep === 'idle' ? (
+              <button 
+                onClick={handleGenerateCleanBase} 
+                disabled={isGenerating || !formData.path1.idea} 
+                className="w-full py-5 bg-slate-950 text-white rounded-[1.8rem] font-black text-lg shadow-xl hover:bg-black transition-all flex items-center justify-center gap-3 italic uppercase tracking-widest disabled:opacity-50"
+              >
+                {isGenerating ? <Loader2 className="animate-spin" /> : <RefreshCw size={20} />} 啟動設計引擎
+              </button>
+            ) : (
+              <div className="grid grid-cols-1 gap-3 animate-in slide-in-from-bottom-4 duration-500">
+                <button 
+                  onClick={handleTransformToCraft} 
+                  disabled={isGenerating} 
+                  className="w-full py-5 bg-blue-600 text-white rounded-[1.8rem] font-black text-lg shadow-xl hover:bg-blue-700 transition-all flex items-center justify-center gap-3 italic uppercase tracking-widest"
+                >
+                  {isGenerating ? <Loader2 className="animate-spin" /> : <Wand2 size={20} />} 執行工藝模擬
+                </button>
+                <div className="grid grid-cols-2 gap-2">
+                  <button onClick={() => { setCurrentStep('idle'); setGeneratedImages({ clean: null, craft: null }); }} className="py-4 bg-white border border-red-100 text-red-500 rounded-2xl font-black text-[10px] uppercase hover:bg-red-50 transition-colors">重置系統</button>
+                  <button onClick={() => handleDownloadPackage(false)} className="py-4 bg-slate-100 text-slate-600 rounded-2xl font-black text-[10px] uppercase hover:bg-slate-200 transition-colors">導出底稿</button>
+                </div>
+              </div>
+            )}
+            {currentStep === 'craft_ready' && (
+               <button 
+                onClick={() => handleDownloadPackage(true)} 
+                className="w-full py-5 bg-emerald-500 text-white rounded-[1.8rem] font-black text-lg shadow-xl hover:bg-emerald-600 transition-all flex items-center justify-center gap-3 uppercase tracking-widest animate-in fade-in zoom-in"
+               >
+                  <Download size={24}/> 封裝成品規格單
+               </button>
+            )}
+          </div>
+        </div>
+
+        <div className="lg:col-span-7">
+          <div className="bg-white rounded-[2.5rem] shadow-2xl border border-slate-200 overflow-hidden relative min-h-[500px] group">
+            <div className="p-4 bg-slate-50 flex items-center justify-between border-b border-slate-100">
+               <div className="flex bg-slate-200/50 p-1 rounded-full gap-1">
+                  <button onClick={() => setViewMode('clean')} disabled={!generatedImages.clean} className={`px-5 py-2 rounded-full text-[10px] font-black transition-all ${viewMode === 'clean' ? 'bg-emerald-500 text-white shadow-md' : 'text-slate-400'}`}>1. 向量底稿</button>
+                  <button onClick={() => setViewMode('craft')} disabled={!generatedImages.craft} className={`px-5 py-2 rounded-full text-[10px] font-black transition-all ${viewMode === 'craft' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-300'}`}>2. 成品模擬</button>
+               </div>
+               <div className="text-[8px] font-black text-slate-300 uppercase tracking-widest pr-4">Tung Design Preview Engine</div>
+            </div>
+            <div className="aspect-square bg-slate-950 flex items-center justify-center relative overflow-hidden">
+               {currentStep === 'idle' ? (
+                 <div className="text-center opacity-10 animate-pulse">
+                   <ImageIcon size={64} className="mx-auto mb-4 text-white" />
+                   <p className="text-[10px] font-black uppercase tracking-[0.5em] text-white">等待設計指令</p>
+                 </div>
+               ) : (
+                 <img 
+                  src={viewMode === 'clean' ? generatedImages.clean : (generatedImages.craft || generatedImages.clean)} 
+                  className="max-w-full max-h-full object-contain p-6 drop-shadow-[0_20px_50px_rgba(0,0,0,0.5)] animate-in zoom-in-95 duration-700" 
+                  alt="Preview" 
+                 />
+               )}
+               {isGenerating && (
+                 <div className="absolute inset-0 bg-slate-950/70 backdrop-blur-md flex flex-col items-center justify-center z-20 text-white">
+                    <Loader2 size={48} className="text-emerald-400 animate-spin mb-4" />
+                    <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400 animate-pulse">核心引擎運行中...</span>
+                 </div>
+               )}
+            </div>
+            <div className="absolute bottom-4 left-0 right-0 text-center">
+               <span className="bg-slate-900/40 backdrop-blur px-3 py-1 rounded-full text-[8px] font-bold text-slate-400 uppercase tracking-widest border border-white/10">Processed by Gemini AI Engine</span>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+};
+
+export default App;
